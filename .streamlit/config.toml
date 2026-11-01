@@ -4,3 +4,7 @@ toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false
+
+[server]
+# Only this computer can open the app: no Network/External links, nothing reachable from other devices.
+address = "localhost"
