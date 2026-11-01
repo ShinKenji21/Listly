@@ -19,7 +19,8 @@ DEMO_MODE = os.getenv("LISTLY_DEMO") == "1"
 
 
 def has_api_key() -> bool:
-    return bool(os.getenv("META_API_KEY"))
+    # The placeholder from .env.example counts as "no key", so new users get the setup hint.
+    return os.getenv("META_API_KEY", "") not in ("", "your-key-here")
 
 
 @lru_cache(maxsize=1)

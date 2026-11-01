@@ -22,7 +22,11 @@ st.caption("Snap a photo of something you want to sell.")
 if DEMO_MODE:
     st.info("Demo mode: showing a sample answer. No API calls, no credits used.")
 elif not has_api_key():
-    st.error("No API key found. Copy .env.example to .env and add your META_API_KEY.")
+    # Someone who downloaded the repo without a key should still be able to see the app working.
+    st.error(
+        "No API key found. Copy .env.example to .env and add your own META_API_KEY.\n\n"
+        "No key? Set LISTLY_DEMO=1 in .env to try Listly with sample results."
+    )
     st.stop()
 
 source = st.radio("Photo from", ["Upload", "Camera"], horizontal=True)
