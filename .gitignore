@@ -221,3 +221,7 @@ __marimo__/
 
 # Listly: cached model results (never commit)
 cache/
+
+# Listly: saved listings and eval photos stay on your own computer (never commit)
+listings/
+eval/photos/

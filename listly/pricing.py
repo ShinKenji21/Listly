@@ -6,7 +6,7 @@ from listly import cache
 from listly.api import StepError, create_response, parse_json
 from listly.config import DEMO_MODE, MODEL
 from listly.images import image_hash
-from listly.models import UNKNOWN, ListingDraft, PriceEstimate
+from listly.models import ListingDraft, PriceEstimate
 
 STEP = "pricing"
 
@@ -58,20 +58,6 @@ WEB_SEARCH = {
 }
 
 
-def _describe(draft: ListingDraft) -> str:
-    info = draft.info
-    lines = [f"Item: {info.item}"]
-    for label, value in [("Brand", info.brand), ("Model", info.model), ("Color", info.color)]:
-        if value != UNKNOWN:  # leave out unknowns so the model doesn't search for the word "unknown"
-            lines.append(f"{label}: {value}")
-    lines.append(f"Condition: {info.condition}")
-    if info.flaws:
-        lines.append("Flaws: " + "; ".join(info.flaws))
-    for question, answer in draft.answers.items():
-        lines.append(f"{question} {answer}")
-    return "\n".join(lines)
-
-
 def _get(obj, name):
     # Extra fields can come back as plain dicts instead of SDK objects; handle both.
     return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
@@ -101,7 +87,7 @@ def suggest_price(draft: ListingDraft) -> PriceEstimate:
     if DEMO_MODE:
         return PriceEstimate.from_dict(DEMO_REPLY)
 
-    details = _describe(draft)
+    details = draft.describe()
     # Key on the details, not just the photo: if the seller fixes the brand, the price should be redone.
     # The prompt is in the key too, so improving the prompt doesn't keep serving old answers.
     key = image_hash((draft.photo_id + details + PROMPT).encode())

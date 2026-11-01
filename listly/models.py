@@ -1,7 +1,8 @@
-"""Data shapes passed between steps. Later days add PriceEstimate, PlatformListing, etc."""
+"""Data shapes passed between steps, with validation for everything that comes from the model."""
 
 import re
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 
 UNKNOWN = "unknown"
 CONDITIONS = ["new", "like new", "good", "fair", "poor"]
@@ -156,16 +157,72 @@ class PriceEstimate:
 
 
 @dataclass
+class PlatformListing:
+    """Title, description and tags written for one platform."""
+
+    title: str
+    description: str
+    tags: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)  # checker problems the model couldn't fix
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PlatformListing":
+        """Validate the model's JSON. Raises ValueError if the title or description is missing."""
+        if not isinstance(data, dict):
+            raise ValueError("reply was not a JSON object")
+        title, description = _text(data.get("title")), str(data.get("description") or "").strip()
+        if title == UNKNOWN or not description:
+            raise ValueError("reply is missing the title or description")
+        tags = [t.lstrip("#") for t in _text_list(data.get("tags"))]  # we add "#" ourselves where needed
+        return cls(title=title, description=description, tags=tags, warnings=_text_list(data.get("warnings")))
+
+
+@dataclass
 class ListingDraft:
-    """Everything the seller has confirmed so far. Later steps (price, listings) read from this.
+    """One listing, from the first photo to the finished texts. Saved to disk as JSON.
 
     `info` is the seller's edited copy, not the raw model answer: the seller knows their item
     better than the model, so their corrections must win.
     """
 
-    photo_id: str
+    photo_id: str  # also the listing's id: listing the same photo again updates the same listing
     info: ItemInfo
     answers: dict[str, str] = field(default_factory=dict)  # follow-up question -> seller's answer
+    platforms: list[str] = field(default_factory=list)  # keys from listly.platforms
+    price: PriceEstimate | None = None
+    asking_price: int | None = None  # what the seller decided, which may differ from the suggestion
+    language: str = "English"
+    listings: dict[str, PlatformListing] = field(default_factory=dict)  # platform key -> texts
+    created: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
+
+    def describe(self) -> str:
+        """The item details as plain text lines, for prompts."""
+        info = self.info
+        lines = [f"Item: {info.item}"]
+        for label, value in [("Brand", info.brand), ("Model", info.model), ("Color", info.color)]:
+            if value != UNKNOWN:  # leave out unknowns so the model doesn't write or search "unknown"
+                lines.append(f"{label}: {value}")
+        lines.append(f"Condition: {info.condition}")
+        lines.append("Flaws: " + ("; ".join(info.flaws) if info.flaws else "none known"))
+        for question, answer in self.answers.items():
+            lines.append(f"{question} {answer}")
+        return "\n".join(lines)
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ListingDraft":
+        """Load a saved listing. Raises ValueError if the file is unusable."""
+        price = data.get("price")
+        return cls(
+            photo_id=str(data["photo_id"]),
+            info=ItemInfo.from_dict(data["info"]),
+            answers=dict(data.get("answers") or {}),
+            platforms=list(data.get("platforms") or []),
+            price=PriceEstimate.from_dict(price) if price else None,
+            asking_price=_peso(data.get("asking_price")),
+            language=str(data.get("language") or "English"),
+            listings={k: PlatformListing.from_dict(v) for k, v in (data.get("listings") or {}).items()},
+            created=str(data.get("created") or ""),
+        )

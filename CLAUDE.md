@@ -26,9 +26,16 @@ User flow:
 ## Meta Model API
 - Base URL: `https://api.meta.ai/v1` (OpenAI-compatible)
 - Text/vision model: `muse-spark-1.3` (read from env var `META_MODEL`)
-- Web search, SAM 3.1 and Muse Image: **exact request formats and model IDs are not confirmed.**
-  Do NOT invent endpoints or parameters. Put each one behind a small function in its own module
-  with a clear `TODO: confirm in Meta Model API docs` and ask me for the docs before implementing.
+- All calls use the Responses API (`client.responses.create`). Confirmed from the docs:
+  - Images: `{"type": "input_image", "image_url": <base64 data URL>}`.
+  - Web search: `tools=[{"type": "web_search", ...}]`, `include=["web_search_call.results"]`;
+    sources come back as `url_citation` annotations.
+  - SAM 3.1: model `sam-3.1`, short noun prompt + image, `metadata={"mask_encoding": "one_bit"}`;
+    reply grammar and mask codec are implemented in `listly/cutout.py`.
+  - Muse Image: model `muse-image-1.0`, image in the input; result is base64 in an
+    `image_generation_call` output item.
+- Anything not in the docs: do NOT invent it. Mark it `TODO: confirm in Meta Model API docs` and ask me.
+- Not hosted: people run it locally with their own key, or demo mode (`LISTLY_DEMO=1`).
 
 ## Rules
 - Never hardcode or print the API key. It lives only in `.env`. `.env` and `cache/` must be in
@@ -54,24 +61,30 @@ listly/
   images.py            # resize, hashing
   cache.py             # disk cache helpers
   identify.py          # Muse Spark: item + flaws + questions
-  cutout.py            # SAM 3.1 (TODO until docs confirmed)
-  clean_photo.py       # Muse Image (TODO until docs confirmed)
+  cutout.py            # SAM 3.1 + one_bit mask decoder (port of @meta-sam/parser, SAM License)
+  clean_photo.py       # Muse Image
   pricing.py           # Muse Spark + web search
-  writer.py            # per-platform listings
-  models.py            # dataclasses: Photo, ItemInfo, PriceEstimate, Comparable, PlatformListing, ListingDraft
+  writer.py            # per-platform listings + checker
+  buyer.py             # buyer reply helper (lowest-price guard)
+  platforms.py         # platform profiles
+  storage.py           # saved listings in listings/
+  sample.py            # sample listing for people without a key
+  api.py               # shared API call + error handling
+  models.py            # dataclasses: ItemInfo, PriceEstimate, Comparable, PlatformListing, ListingDraft
 eval/
   items.csv            # 30 test items with known answers
   run_eval.py          # scores identification, flaws, price range
 ```
 
-## Screens (phone-first, step bar at the top)
-1. Add photo — Upload / Camera, platform checkboxes (Facebook Marketplace, Shopee, Carousell).
-2. Item details — editable fields, flaws highlighted, follow-up questions as quick inputs.
-3. Photo and price — original + clean photo side by side with Download buttons; price range with
-   links to comparable listings.
-4. Listings — one tab per platform: title, description, tags, each with a Copy button, plus
-   Copy all and an "Open site" button (opens the site's create-listing page in a new tab).
-Listly never posts for the seller and never asks for their passwords.
+## Screens (phone-first)
+1. Home — new listing (Upload / Camera, "Sell on" platform pills), "My listings" cards, "Try a sample".
+2. New listing, 3 steps with a step bar:
+   Details (editable fields, flaws highlighted, follow-up questions) → Photo & price (original +
+   clean photo with Download buttons, price range with source links, asking price) → Listings
+   (language choice, one tab per platform with copy boxes, edit, "Open site") → Save listing.
+3. Saved listing — copy boxes, edit, buyer reply helper, delete.
+Saved listings are stored locally in `listings/` (gitignored). Listly never posts for the seller
+and never asks for their passwords.
 
 ## Platform profiles
 Each platform is a small profile (tone, max title length, required fields, hashtags yes/no) in
