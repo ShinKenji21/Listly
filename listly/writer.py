@@ -29,7 +29,7 @@ Asking price: {price}
 Platform rules:
 - Tone: {tone}.
 - Title: at most {max_title} characters. Put the most important words first (brand, model, key spec).
-- Description: {description_tips}
+- Description: {description_tips} Use the highlights and the seller's answers as selling points.
 - {hashtag_rule}
 - Tags: {min_tags} to {max_tags} short search keywords, without "#".
 - Language: {language}
@@ -51,6 +51,17 @@ It has these problems:
 {problems}
 
 Fix them and reply with the corrected JSON object only."""
+
+
+REVISE_PROMPT = """{prompt}
+
+The current listing is:
+{current}
+
+The seller asks you to change it: "{request}"
+Apply the seller's request. Facts the seller states in the request may be added to the listing.
+Keep following all the rules above, especially: mention every flaw.
+Reply with the full updated JSON object only."""
 
 
 def _price_text(draft: ListingDraft) -> str:
@@ -121,6 +132,13 @@ def write_listing(draft: ListingDraft, platform: Platform) -> PlatformListing:
         except ValueError:
             pass  # stale cache; write it again
 
+    listing = _ask_checked(prompt, platform, draft)
+    cache.save(STEP, key, asdict(listing))
+    return listing
+
+
+def _ask_checked(prompt: str, platform: Platform, draft: ListingDraft) -> PlatformListing:
+    """Ask for a listing, check it, and if it breaks a rule ask once more to fix it."""
     listing = _ask(prompt)
     problems = check(listing, platform, draft)
     if problems:
@@ -128,9 +146,28 @@ def write_listing(draft: ListingDraft, platform: Platform) -> PlatformListing:
         previous = json.dumps({"title": listing.title, "description": listing.description, "tags": listing.tags})
         fixed = _ask(FIX_PROMPT.format(prompt=prompt, previous=previous, problems="\n".join(problems)))
         listing = replace(fixed, warnings=check(fixed, platform, draft))
-
-    cache.save(STEP, key, asdict(listing))
     return listing
+
+
+def revise_listing(draft: ListingDraft, platform: Platform, listing: PlatformListing, request: str) -> PlatformListing:
+    """Rewrite a listing the way the seller asks ("make it shorter", "add that it has a box")."""
+    if DEMO_MODE:
+        return replace(listing, description=f"{listing.description}\n\n(Demo mode: Muse Spark would apply: {request})")
+
+    current = json.dumps({"title": listing.title, "description": listing.description, "tags": listing.tags}, ensure_ascii=False)
+    prompt = REVISE_PROMPT.format(prompt=_build_prompt(draft, platform), current=current, request=request.strip())
+    key = image_hash(prompt.encode())
+    cached = cache.load(STEP, key)
+    if cached is not None:
+        try:
+            return PlatformListing.from_dict(cached)
+        except ValueError:
+            pass
+
+    # The seller's request can't switch the rules off (e.g. "remove the flaw"): same check and fix as a new listing.
+    revised = _ask_checked(prompt, platform, draft)
+    cache.save(STEP, key, asdict(revised))
+    return revised
 
 
 DEMO_LISTINGS = {

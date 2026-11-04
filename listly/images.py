@@ -29,6 +29,14 @@ def image_hash(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()[:16]
 
 
+def thumbnail(image_bytes: bytes, size: int = 160) -> bytes:
+    """Small square JPEG for listing cards, so the home screen stays light even with many listings."""
+    img = ImageOps.fit(Image.open(io.BytesIO(image_bytes)).convert("RGB"), (size, size))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=80)
+    return buf.getvalue()
+
+
 def to_data_url(image_bytes: bytes, mime: str = "image/jpeg") -> str:
     """Embed the image in the request so we don't need to host it anywhere."""
     b64 = base64.b64encode(image_bytes).decode()

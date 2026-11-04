@@ -8,25 +8,36 @@ from listly.models import ItemInfo
 
 STEP = "identify"
 
-PROMPT = """You are helping a small online seller in the Philippines list an item for sale.
-Look at the photo and reply with ONLY a JSON object, no other text:
+PROMPT = """You are helping a small online seller in the Philippines list a second-hand item for sale.
+
+First read any visible text, logos, badges or labels on the item: they are the best evidence for brand and model.
+Then look closely at the condition: check edges, corners, surfaces and any visible wear.
+
+Reply with ONLY a JSON object, no other text:
 {
-  "item": "what the item is, e.g. 'running shoes'",
+  "item": "what the item is, e.g. 'running shoes', 'motor scooter'",
   "object_name": "the plain 1-2 word name of the object, e.g. 'shoes', 'scooter', 'phone'",
   "brand": "brand name, or 'unknown' if you can't tell",
   "model": "specific model, or 'unknown' if you can't tell",
-  "category": "e.g. 'Shoes', 'Electronics', 'Kitchen', 'Clothing'",
+  "category": "e.g. 'Shoes', 'Electronics', 'Vehicles', 'Kitchen', 'Clothing'",
   "color": "main color(s)",
   "condition": "one of: new, like new, good, fair, poor",
-  "flaws": ["visible scratches, stains, tears, etc. Empty list if none"],
+  "flaws": ["each visible flaw with where it is, e.g. 'scratch on the left side panel'. Empty list if none"],
+  "features": ["up to 5 visible selling points, e.g. 'gold rims', 'original box included', 'leather strap'"],
   "confidence": "high, medium, or low",
-  "questions_for_seller": ["things you can't tell from the photo, e.g. size, does it work"],
+  "questions_for_seller": ["2 to 4 short questions a buyer would ask that the photo can't answer"],
   "prohibited": false,
   "prohibited_reason": ""
 }
-Be honest. Never guess a brand or model: if you are unsure, write "unknown" and lower your confidence.
-Set "prohibited" to true, with a short reason, if the item is a weapon, drugs,
-a counterfeit or replica of a branded product, or a live animal."""
+
+Rules:
+- Never guess a brand or model. Only name one you can see (logo, text, a very distinctive design);
+  otherwise write "unknown". Use "high" confidence only when brand and model are both clearly visible.
+- Questions should fit this kind of item: e.g. size and fit for clothes and shoes; age, battery health and
+  inclusions (box, charger) for electronics; year, mileage and OR/CR for vehicles; whether it works for appliances.
+  Don't ask about things already visible in the photo.
+- Set "prohibited" to true, with a short reason, if the item is a weapon, drugs,
+  a counterfeit or replica of a branded product, or a live animal."""
 
 # Shaped like a real reply so demo mode still goes through the same validation.
 DEMO_REPLY = {
@@ -38,6 +49,7 @@ DEMO_REPLY = {
     "color": "white and grey",
     "condition": "good",
     "flaws": ["scuff on left toe", "slightly worn soles"],
+    "features": ["breathable mesh upper", "cushioned sole"],
     "confidence": "medium",
     "questions_for_seller": ["What size are they?", "How many times have they been worn?"],
     "prohibited": False,
@@ -45,12 +57,17 @@ DEMO_REPLY = {
 }
 
 
+def cache_key(image_bytes: bytes) -> str:
+    # The prompt is part of the key, so improving the prompt doesn't keep serving old answers.
+    return image_hash(image_bytes + PROMPT.encode())
+
+
 def identify_item(image_bytes: bytes) -> ItemInfo:
-    """Identify the item in an already-shrunk JPEG. Cached by image hash."""
+    """Identify the item in an already-shrunk JPEG. Cached by photo + prompt."""
     if DEMO_MODE:
         return ItemInfo.from_dict(DEMO_REPLY)
 
-    key = image_hash(image_bytes)
+    key = cache_key(image_bytes)
     cached = cache.load(STEP, key)
     if cached is not None:
         try:

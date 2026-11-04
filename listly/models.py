@@ -47,6 +47,7 @@ class ItemInfo:
     color: str = UNKNOWN
     condition: str = UNKNOWN
     flaws: list[str] = field(default_factory=list)
+    features: list[str] = field(default_factory=list)  # visible selling points, e.g. "gold rims"
     confidence: str = "low"
     questions_for_seller: list[str] = field(default_factory=list)
     prohibited: bool = False
@@ -70,6 +71,7 @@ class ItemInfo:
             color=_text(data.get("color")),
             condition=_choice(data.get("condition"), CONDITIONS),
             flaws=_text_list(data.get("flaws")),
+            features=_text_list(data.get("features")),
             confidence=_choice(data.get("confidence"), CONFIDENCES),
             questions_for_seller=_text_list(data.get("questions_for_seller")),
             prohibited=data.get("prohibited") is True,
@@ -203,6 +205,8 @@ class ListingDraft:
             if value != UNKNOWN:  # leave out unknowns so the model doesn't write or search "unknown"
                 lines.append(f"{label}: {value}")
         lines.append(f"Condition: {info.condition}")
+        if info.features:
+            lines.append("Highlights: " + "; ".join(info.features))
         lines.append("Flaws: " + ("; ".join(info.flaws) if info.flaws else "none known"))
         for question, answer in self.answers.items():
             lines.append(f"{question} {answer}")

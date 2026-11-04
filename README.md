@@ -14,9 +14,10 @@ the busywork. The seller stays in control: they check and edit everything, and *
 
 ## What it does
 
-1. **Identify:** Muse Spark looks at the photo and returns the item, brand, model, condition, visible flaws and a
-   confidence level. It says "unknown" rather than guessing a brand, and asks follow-up questions about things a photo
-   can't show (size, mileage, whether it works, OR/CR for vehicles). It refuses prohibited items (weapons, drugs,
+1. **Identify:** Muse Spark reads any visible logos and labels first, then returns the item, brand, model,
+   condition, visible flaws (with where they are), highlights worth mentioning, and a confidence level. It says
+   "unknown" rather than guessing a brand, and asks follow-up questions that fit the kind of item (size for shoes,
+   battery and charger for gadgets, mileage and OR/CR for vehicles). It refuses prohibited items (weapons, drugs,
    counterfeits, animals).
 2. **Cut out:** SAM 3.1 finds the item in the photo and cuts it out of the background.
 3. **Clean photo:** Muse Image 1.0 places the cut-out on a clean white background, and is told never to change the
@@ -26,7 +27,9 @@ the busywork. The seller stays in control: they check and edit everything, and *
    actually returned**, so made-up links are dropped.
 5. **Write:** Muse Spark writes a title, description and tags for each platform, in English, Filipino or Taglish,
    following that platform's profile (tone, title length, hashtags). A checker validates each listing in code,
-   including that **every flaw is mentioned**, and asks the model to fix it once if needed.
+   including that **every flaw is mentioned**, and asks the model to fix it once if needed. The seller can edit by
+   hand or just ask: "make it shorter", "add that it comes with the box". Rewrites go through the same checker, so a
+   request can't quietly drop a flaw.
 6. **Reply to buyers:** paste a buyer's message and set your lowest price; Muse Spark drafts a polite reply. Listly
    double-checks the reply in code and never lets it offer less than your lowest price.
 
@@ -75,6 +78,7 @@ Open the link Streamlit prints (usually http://localhost:8501). On a phone on th
 
 ```
 app.py               Streamlit UI: home, 3-step new listing, saved listing
+style.css            Listly's look (theme colours are in .streamlit/config.toml)
 listly/
   identify.py        Muse Spark: item, flaws, follow-up questions
   cutout.py          SAM 3.1 cut-out + one_bit mask decoder

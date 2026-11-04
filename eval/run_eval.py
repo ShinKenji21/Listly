@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # so "listly" i
 
 from listly import cache  # noqa: E402
 from listly.api import StepError  # noqa: E402
-from listly.identify import STEP as IDENTIFY_STEP, identify_item  # noqa: E402
+from listly.identify import STEP as IDENTIFY_STEP, cache_key, identify_item  # noqa: E402
 from listly.images import image_hash, shrink_image  # noqa: E402
 from listly.models import CONDITIONS, UNKNOWN, ListingDraft  # noqa: E402
 from listly.pricing import suggest_price  # noqa: E402
@@ -66,7 +66,7 @@ def main() -> None:
         return
 
     images = [shrink_image(path.read_bytes()) for _, path in items]
-    new_identify = sum(1 for img in images if cache.load(IDENTIFY_STEP, image_hash(img)) is None)
+    new_identify = sum(1 for img in images if cache.load(IDENTIFY_STEP, cache_key(img)) is None)
     print(f"{len(items)} items: {new_identify} new identification calls" + (f", up to {len(items)} price searches" if with_price else ""))
     if not run:
         print("Nothing was sent. Re-run with --yes to make these calls (cached results cost nothing).")
