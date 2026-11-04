@@ -20,12 +20,17 @@ from the same site): any Philippine marketplace, classifieds site, or shop that 
 Also look up the current brand-new price (SRP) in the Philippines, if the item is still sold new.
 Then suggest a fair price range in Philippine pesos (PHP), adjusted for this item's condition and flaws.
 A used item should normally be priced below its brand-new price.
+Also suggest a listing price (attractive, but leaving a little room for buyers to negotiate) and the
+lowest price the seller should accept (not below what similar items really sell for).
 
 Reply with ONLY a JSON object, no other text:
 {{
   "price_low": 1200,
   "price_high": 1800,
+  "listing_price": 1600,
+  "suggested_lowest": 1400,
   "new_price": 2500,
+  "reason": "one short line based on the comparables, e.g. 'similar items sell for ₱1,200–₱1,800'",
   "summary": "one or two sentences explaining the range",
   "confidence": "high, medium, or low",
   "comparables": [
@@ -40,7 +45,10 @@ If you found few or no good matches, say so in the summary and set confidence to
 DEMO_REPLY = {
     "price_low": 1500,
     "price_high": 2200,
+    "listing_price": 1900,
+    "suggested_lowest": 1600,
     "new_price": 5495,
+    "reason": "Similar used Nike running shoes sell for ₱1,500–₱2,200.",
     "summary": "Used Nike running shoes in good condition usually sell for ₱1,500–₱2,500; "
     "the toe scuff puts this pair toward the lower end.",
     "confidence": "medium",

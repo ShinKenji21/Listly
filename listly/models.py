@@ -133,6 +133,9 @@ class PriceEstimate:
     confidence: str = "low"
     comparables: list[Comparable] = field(default_factory=list)
     new_price: int | None = None  # brand-new price, as a sanity check for the used range
+    listing_price: int | None = None  # a good price to list at, leaving room to negotiate
+    suggested_lowest: int | None = None  # the lowest price worth accepting (private to the seller)
+    reason: str = ""  # one line, e.g. "similar items sell for ₱2,500–₱3,200"
 
     @classmethod
     def from_dict(cls, data: dict) -> "PriceEstimate":
@@ -144,15 +147,25 @@ class PriceEstimate:
             raise ValueError("reply is missing a price range")
         comparables = data.get("comparables")
         found = [Comparable.from_dict(c) for c in comparables] if isinstance(comparables, list) else []
-        summary = _text(data.get("summary"))
+        summary, reason = _text(data.get("summary")), _text(data.get("reason"))
         confidence = _choice(data.get("confidence"), CONFIDENCES)
+        low, high = min(low, high), max(low, high)  # in case the model swaps them
+        listing = _peso(data.get("listing_price"))
+        if listing is None or not low <= listing <= high:
+            listing = int(round((low + high) / 2, -2))  # a sensible middle if the model's is missing or odd
+        lowest = _peso(data.get("suggested_lowest"))
+        if lowest is None or lowest > listing:
+            lowest = int(round(listing * 0.9, -2))  # never suggest a "lowest" above the listing price
         return cls(
-            price_low=min(low, high),  # in case the model swaps them
-            price_high=max(low, high),
+            price_low=low,
+            price_high=high,
             summary="" if summary == UNKNOWN else summary,
             confidence="low" if confidence == UNKNOWN else confidence,
             comparables=[c for c in found if c is not None],
             new_price=_peso(data.get("new_price")),
+            listing_price=listing,
+            suggested_lowest=lowest,
+            reason="" if reason == UNKNOWN else reason,
         )
 
     def to_dict(self) -> dict:
@@ -198,6 +211,8 @@ class ListingDraft:
     listings: dict[str, PlatformListing] = field(default_factory=dict)  # platform key -> texts
     created: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
     status: str = "draft"  # one of STATUSES; the seller changes it (Listly never posts anything itself)
+    lowest_price: int | None = None  # private: used for buyer replies, never put in listing texts
+    reply_history: list[dict] = field(default_factory=list)  # last few buyer replies: message, reply, date
 
     def describe(self) -> str:
         """The item details as plain text lines, for prompts."""
@@ -232,4 +247,45 @@ class ListingDraft:
             listings={k: PlatformListing.from_dict(v) for k, v in (data.get("listings") or {}).items()},
             created=str(data.get("created") or ""),
             status=data.get("status") if data.get("status") in STATUSES else "draft",
+            lowest_price=_peso(data.get("lowest_price")),
+            reply_history=[h for h in (data.get("reply_history") or []) if isinstance(h, dict)],
         )
+
+
+@dataclass
+class SellerSettings:
+    """How the seller sells: saved once, used to answer buyers' questions."""
+
+    meetup_spots: str = ""
+    available_times: str = ""
+    shipping: str = ""
+    payment: str = ""
+    swaps: bool = False
+
+    def describe(self) -> str:
+        """As plain text lines for prompts. "not set" tells the model to ask the seller instead of guessing."""
+        def value(text: str) -> str:
+            return text.strip() or "not set"
+        return "\n".join([
+            f"Meet-up spots: {value(self.meetup_spots)}",
+            f"Available times: {value(self.available_times)}",
+            f"Shipping: {value(self.shipping)}",
+            f"Payment methods: {value(self.payment)}",
+            f"Open to swaps: {'yes' if self.swaps else 'no'}",
+        ])
+
+    def is_empty(self) -> bool:
+        return not any([self.meetup_spots, self.available_times, self.shipping, self.payment])
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SellerSettings":
+        return cls(
+            meetup_spots=str(data.get("meetup_spots") or ""),
+            available_times=str(data.get("available_times") or ""),
+            shipping=str(data.get("shipping") or ""),
+            payment=str(data.get("payment") or ""),
+            swaps=data.get("swaps") is True,
+        )
+
+    def to_dict(self) -> dict:
+        return asdict(self)

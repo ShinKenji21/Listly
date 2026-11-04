@@ -60,9 +60,10 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none !important; }
 .topbar .mark { width: 40px; height: 40px; display: block; border-radius: 10px; }
 .topbar .name { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; color: var(--ink); line-height: 1.05; }
 .topbar .tagline { font-size: .85rem; color: var(--muted); }
-.topbar .demo {
-  margin-left: auto; font-size: .75rem; font-weight: 600; color: var(--warn); white-space: nowrap;
-  background: var(--warn-soft); border-radius: 999px; padding: 4px 10px;
+.topbar .tagline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.demo {
+  display: inline-block; font-size: .75rem; font-weight: 600; color: var(--warn);
+  background: var(--warn-soft); border-radius: 999px; padding: 4px 10px; margin-top: 8px;
 }
 
 /* "Sell something new" card */
@@ -166,6 +167,28 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none !important; }
 .page-head { margin: 8px 0 12px; }
 .page-head h2 { font-size: 1.3rem; font-weight: 800; margin: 4px 0 4px; color: var(--ink); line-height: 1.3; }
 .page-head .big-price { font-size: 1.6rem; font-weight: 800; color: var(--brand); margin-bottom: 8px; letter-spacing: -.02em; }
+
+/* Read-only listing text with a label */
+.field { margin-bottom: 12px; }
+.field-label {
+  display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px;
+  font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+}
+.field-label span:last-child { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.field-text {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; color: var(--ink); font-size: .95rem; line-height: 1.55; overflow-wrap: anywhere;
+}
+/* Copy-button iframes sit flush with the content around them */
+iframe[title="st.iframe"], [data-testid="stIFrame"] { border: 0; }
+
+/* Private things (lowest price) */
+.private { font-size: .82rem; color: var(--muted); margin: -4px 0 8px; }
+
+/* Top row on home: brand on the left, Settings on the right, even on a phone */
+.st-key-toprow [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center; }
+.st-key-toprow [data-testid="stColumn"]:first-child { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; }
+.st-key-toprow [data-testid="stColumn"]:last-child { flex: 0 0 auto !important; min-width: 0 !important; width: auto !important; }
 
 /* Destructive button in the delete dialog is red, not the brand colour. */
 .st-key-pair_delete [data-testid="stColumn"]:last-child button { background: #B42318; border-color: #B42318; color: #fff; }

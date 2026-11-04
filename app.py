@@ -1,6 +1,6 @@
 """Listly - Streamlit UI only. All model/image/cache logic lives in the listly/ package.
 
-Pages: home (Sell something new + My listings), new (4 steps), view (one saved listing).
+Pages: home (Sell something new + My listings), new (4 steps), view (one saved listing), settings.
 Streamlit reruns this whole script on every click, so "where we are" lives in st.session_state.
 The look lives in listly/ui (theme.py for styling, components.py for reusable pieces).
 """
@@ -8,6 +8,7 @@ The look lives in listly/ui (theme.py for styling, components.py for reusable pi
 import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime
 from html import escape
 from pathlib import Path
 
@@ -16,17 +17,19 @@ from PIL import UnidentifiedImageError
 
 from listly import storage
 from listly.api import StepError
-from listly.buyer import draft_reply
 from listly.clean_photo import make_clean_photo
 from listly.config import DEMO_MODE, has_api_key
 from listly.cutout import cut_out
 from listly.identify import identify_item
 from listly.images import image_hash, shrink_image
-from listly.models import CONDITIONS, STATUSES, UNKNOWN, ListingDraft, PlatformListing, PriceEstimate
+from listly.models import CONDITIONS, STATUSES, UNKNOWN, ListingDraft, PlatformListing, PriceEstimate, SellerSettings
 from listly.platforms import PLATFORMS
 from listly.pricing import suggest_price
+from listly.replies import draft_reply
 from listly.sample import SAMPLE_PREFIX, make_samples
 from listly.ui.components import (
+    copy_buttons,
+    demo_badge,
     empty_state,
     html,
     image_src,
@@ -35,6 +38,7 @@ from listly.ui.components import (
     platform_chips,
     section_header,
     step_bar,
+    text_field,
     title_of,
     top_bar,
 )
@@ -50,6 +54,7 @@ if "toast" in state:
 
 STEPS = ["Photo", "Details", "Photo & price", "Listings"]
 SOURCES = ["Upload photo", "Take photo"]
+PRIVATE_NOTE = "🔒 Only you see this. It's never put in your listings."
 
 
 # --- small helpers -------------------------------------------------------------------------------
@@ -78,12 +83,6 @@ def tags_text(listing: PlatformListing, hashtags: bool) -> str:
     return ", ".join(listing.tags)
 
 
-def copy_box(label: str, text: str) -> None:
-    # st.code has a built-in copy button, which is the simplest reliable "Copy" in Streamlit.
-    st.caption(label)
-    st.code(text, language=None, wrap_lines=True)
-
-
 def item_row(image_bytes: bytes, title: str, chips: list[tuple[str, str]]) -> None:
     """Thumbnail + name + small chips. chips = [(text, "good" | "warn" | "")]."""
     chip_html = "".join(f'<span class="chip {kind}">{escape(text)}</span>' for text, kind in chips)
@@ -98,14 +97,17 @@ def show_price(price: PriceEstimate) -> None:
     if price.new_price:
         chips.insert(0, f"Brand new ≈ ₱{price.new_price:,}")
     chip_html = "".join(f'<span class="chip">{escape(c)}</span>' for c in chips)
-    summary = f'<p class="summary">{escape(price.summary)}</p>' if price.summary else ""
+    reason = price.reason or price.summary
+    summary = f'<p class="summary">{escape(reason)}</p>' if reason else ""
     html(
-        f'<div class="price-card"><div class="label">Suggested price</div>'
+        f'<div class="price-card"><div class="label">Fair price range</div>'
         f'<div class="range">₱{price.price_low:,} – ₱{price.price_high:,}</div>'
         f'<div class="chips">{chip_html}</div>{summary}</div>'
     )
     if price.comparables:
         with st.expander(f"See the {len(price.comparables)} listings this is based on"):
+            if price.summary and price.reason:
+                st.caption(price.summary)
             for comp in price.comparables:
                 # Brackets in a web page title would break the markdown link, so drop them.
                 title = comp.title.replace("[", "").replace("]", "")
@@ -115,8 +117,22 @@ def show_price(price: PriceEstimate) -> None:
         st.warning("No source links could be checked, so treat this range as a rough guess.")
 
 
+def price_inputs(draft: ListingDraft, key: str) -> tuple[int, int]:
+    """Listing price + private lowest price, side by side. Defaults come from the price research."""
+    suggested = draft.price.listing_price if draft.price else 0
+    lowest_hint = draft.price.suggested_lowest if draft.price else 0
+    asking_default = int(draft.asking_price or suggested or 0)
+    lowest_default = int(draft.lowest_price or lowest_hint or round(asking_default * 0.9, -2))
+    with st.container(key=f"pair_{key}"):
+        left, right = st.columns(2)
+        asking = left.number_input("Listing price (₱)", min_value=0, value=asking_default, step=100, key=f"ask-{key}")
+        lowest = right.number_input("Lowest you'd accept (₱)", min_value=0, value=lowest_default, step=100, key=f"low-{key}")
+    html(f'<div class="private">{escape(PRIVATE_NOTE)}</div>')
+    return int(asking), int(lowest)
+
+
 def listing_tabs(draft: ListingDraft, on_save=None) -> None:
-    """One tab per platform: copy boxes, rewrite-by-request, an editor and an Open-site button."""
+    """One tab per platform: the texts, real Copy buttons, Open site, and ways to change it."""
     keys = [k for k in draft.platforms if k in PLATFORMS]
     for key, tab in zip(keys, st.tabs([PLATFORMS[k].name for k in keys])):
         platform = PLATFORMS[key]
@@ -131,51 +147,49 @@ def listing_tabs(draft: ListingDraft, on_save=None) -> None:
 
             for warning in listing.warnings:
                 st.warning(warning)
-            copy_box(f"Title · {len(listing.title)}/{platform.max_title} characters", listing.title)
-            copy_box("Description", listing.description)
-            copy_box("Tags", tags_text(listing, platform.hashtags))
+            tags = tags_text(listing, platform.hashtags)
+            text_field("Title", listing.title, f"{len(listing.title)}/{platform.max_title} characters")
+            text_field("Description", listing.description)
+            text_field("Tags", tags)
             if draft.asking_price:
-                copy_box("Price", str(draft.asking_price))
-            st.caption("Tap a box, then its copy icon, and paste it into the site.")
+                text_field("Price", peso(draft.asking_price))
+            everything = f"{listing.title}\n\n{listing.description}\n\n{tags}"
+            copy_buttons([("Copy title", listing.title), ("Copy description", listing.description), ("Copy all", everything)])
+            # Listly never posts: this just opens the site's own create-listing page in a new tab.
+            st.link_button(f"Open {platform.name} ↗", platform.create_url, width="stretch")
 
-            with st.expander("Copy everything at once"):
-                everything = f"{listing.title}\n\n{listing.description}\n\n{tags_text(listing, platform.hashtags)}"
-                st.code(everything, language=None, wrap_lines=True)
+            with st.expander("✨ Change this listing"):
+                with st.form(f"ask-{key}", border=False, clear_on_submit=True):
+                    request = st.text_input(
+                        "Ask Listly to change it",
+                        placeholder="e.g. make it shorter · add that it comes with the box",
+                    )
+                    if st.form_submit_button("Rewrite with Muse Spark", type="primary", width="stretch") and request.strip():
+                        with st.spinner("Rewriting your listing…"):
+                            try:
+                                draft.listings[key] = revise_listing(draft, platform, listing, request)
+                                if on_save:
+                                    on_save(draft)
+                                st.rerun()
+                            except StepError as e:
+                                st.error(str(e))
 
-            with st.form(f"ask-{key}", border=False, clear_on_submit=True):
-                request = st.text_input(
-                    "Ask Listly to change it",
-                    placeholder="e.g. make it shorter · add that it comes with the box",
-                )
-                if st.form_submit_button("Rewrite", width="stretch") and request.strip():
-                    with st.spinner("Rewriting your listing…"):
-                        try:
-                            draft.listings[key] = revise_listing(draft, platform, listing, request)
-                            if on_save:
-                                on_save(draft)
-                            st.rerun()
-                        except StepError as e:
-                            st.error(str(e))
-
-            with st.expander("Edit it yourself"):
+                st.caption("Or edit it yourself:")
                 with st.form(f"edit-{key}", border=False):
                     title = st.text_input("Title", listing.title)
                     description = st.text_area("Description", listing.description, height=220)
-                    tags = st.text_input("Tags (comma-separated)", ", ".join(listing.tags))
+                    tag_text = st.text_input("Tags (comma-separated)", ", ".join(listing.tags))
                     if st.form_submit_button("Save changes", width="stretch"):
                         edited = PlatformListing(
                             title=title.strip(),
                             description=description.strip(),
-                            tags=[t.strip().lstrip("#") for t in tags.split(",") if t.strip()],
+                            tags=[t.strip().lstrip("#") for t in tag_text.split(",") if t.strip()],
                         )
                         # Re-check the seller's edit too, so they see if it breaks a platform rule.
                         draft.listings[key] = replace(edited, warnings=check(edited, platform, draft))
                         if on_save:
                             on_save(draft)
                         st.rerun()
-
-            # Listly never posts: this just opens the site's own create-listing page in a new tab.
-            st.link_button(f"Open {platform.name} ↗", platform.create_url, width="stretch")
 
 
 # --- home ----------------------------------------------------------------------------------------
@@ -212,6 +226,8 @@ def sell_card() -> None:
             '<div class="sell-sub">Take one photo. Listly identifies the item, cleans up the photo, '
             "finds a fair price and writes your listings.</div>"
         )
+        if DEMO_MODE:
+            demo_badge()
         if not (DEMO_MODE or has_api_key()):
             # Someone who downloaded the repo without a key should still be able to see the app working.
             st.warning(
@@ -275,10 +291,38 @@ def my_listings() -> None:
 
 
 def home_page() -> None:
-    top_bar(DEMO_MODE)
+    with st.container(key="toprow"):
+        brand, settings = st.columns([5, 1])
+        with brand:
+            top_bar()
+        if settings.button("Settings", icon=":material/settings:", type="tertiary"):
+            go("settings", back_to="home")
     sell_card()
     my_listings()
     html('<div class="footer">Listly never posts for you · Your listings stay on this computer</div>')
+
+
+# --- settings ------------------------------------------------------------------------------------
+
+
+def settings_page() -> None:
+    if st.button("← Back", type="tertiary"):
+        go(state.get("back_to", "home"))
+    html(
+        '<div class="page-head"><h2>Selling settings</h2>'
+        '<div class="sell-sub">Listly uses this to answer buyers\' questions about meet-ups, shipping and payment. '
+        "It's saved only on this computer.</div></div>"
+    )
+    current = storage.load_settings()
+    with st.container(key="card-settings"), st.form("settings", border=False):
+        meetup = st.text_input("Meet-up spots", current.meetup_spots, placeholder="e.g. SM North EDSA, Trinoma, MRT Quezon Ave")
+        times = st.text_input("Available times", current.available_times, placeholder="e.g. Weekdays after 6 PM, weekends")
+        shipping = st.text_input("Shipping options", current.shipping, placeholder="e.g. Lalamove or J&T, buyer pays shipping")
+        payment = st.text_input("Payment methods", current.payment, placeholder="e.g. Cash on meet-up, GCash")
+        swaps = st.toggle("Open to swaps", current.swaps)
+        if st.form_submit_button("Save settings", type="primary", width="stretch"):
+            storage.save_settings(SellerSettings(meetup.strip(), times.strip(), shipping.strip(), payment.strip(), swaps))
+            go(state.get("back_to", "home"), toast="Settings saved")
 
 
 # --- new listing: 4 steps ------------------------------------------------------------------------
@@ -496,14 +540,13 @@ def photo_price_step(draft: ListingDraft) -> None:
             st.rerun()
     if draft.price:
         show_price(draft.price)
-
-    suggested = round((draft.price.price_low + draft.price.price_high) / 2, -2) if draft.price else 0
-    asking = st.number_input("Your listing price (₱)", min_value=0, value=int(draft.asking_price or suggested), step=100)
+    asking, lowest = price_inputs(draft, "step")
 
     if nav_buttons(2, "Next  →"):
         if draft.asking_price != (asking or None):
             draft.listings = {}  # the texts mention the price, so a new price means new texts
-        draft.asking_price = int(asking) or None
+        draft.asking_price = asking or None
+        draft.lowest_price = min(lowest, asking) if asking and lowest else (lowest or None)
         go("new", step=4, writer_tried=False)
 
 
@@ -545,16 +588,25 @@ def new_page() -> None:
 # --- one saved listing ---------------------------------------------------------------------------
 
 
-def buyer_helper(draft: ListingDraft) -> None:
+def buyer_replies(draft: ListingDraft) -> None:
+    settings = storage.load_settings()
+    if settings.is_empty():
+        st.info("Add your meet-up spots, shipping and payment methods so Listly can answer more buyer questions.")
+        if st.button("Open selling settings", icon=":material/settings:"):
+            go("settings", back_to="view")
+
+    names = {PLATFORMS[k].name: k for k in draft.platforms if k in PLATFORMS}
     with st.container(key="card-buyer"):
-        st.caption("Paste what the buyer wrote. Listly drafts a polite reply and never goes below your lowest price.")
-        with st.form("buyer", border=False):
-            message = st.text_area("Buyer's message", placeholder="Hi! Last price? Can you do ₱1,200?")
-            default_lowest = int(round(draft.asking_price * 0.9, -2)) if draft.asking_price else 0
-            lowest = st.number_input(
-                "Your lowest price (₱) — never shown to the buyer", min_value=0, value=default_lowest, step=100
-            )
-            sent = st.form_submit_button("Draft a reply", type="primary", width="stretch")
+        with st.form(f"buyer-{draft.photo_id}", border=False):
+            message = st.text_area("Paste the buyer's message", placeholder="Hi! Available pa? Last price? Pwede meet-up sa Trinoma?")
+            col1, col2 = st.columns(2)
+            platform_name = col1.selectbox("Where they messaged you", list(names) or ["Other"])
+            language = col2.selectbox("Reply in", list(LANGUAGES), index=list(LANGUAGES).index(draft.language))
+            default_lowest = int(draft.lowest_price or round((draft.asking_price or 0) * 0.9, -2))
+            lowest = st.number_input("Lowest you'd accept (₱)", min_value=0, value=default_lowest, step=100)
+            html(f'<div class="private">{escape(PRIVATE_NOTE)} The buyer never sees it either.</div>')
+            sent = st.form_submit_button("Draft reply", type="primary", width="stretch")
+
         replies = state.setdefault("replies", {})
         if sent:
             if not message.strip() or not lowest:
@@ -562,11 +614,42 @@ def buyer_helper(draft: ListingDraft) -> None:
             else:
                 with st.spinner("Writing a reply…"):
                     try:
-                        replies[draft.photo_id] = draft_reply(draft, message, int(lowest))
+                        result = draft_reply(draft, message, int(lowest), settings, names.get(platform_name, ""), language)
+                        replies[draft.photo_id] = result
+                        # Remember the lowest price and keep a short history of replies for this item.
+                        draft.lowest_price = int(lowest)
+                        entry = {
+                            "date": datetime.now().strftime("%b %d, %H:%M"),
+                            "platform": platform_name,
+                            "message": message.strip(),
+                            "reply": result.reply,
+                        }
+                        draft.reply_history = ([entry] + draft.reply_history)[:5]
+                        storage.save_listing(draft)
                     except StepError as e:
                         st.error(str(e))
-        if draft.photo_id in replies:
-            copy_box("Suggested reply (check it before sending)", replies[draft.photo_id])
+
+        result = replies.get(draft.photo_id)
+        if result:
+            if result.scam_warning:
+                st.error(f"**⚠️ Possible scam.** {result.scam_warning}")
+            if result.needs_seller_input:
+                st.info("**Listly needs your answer to:**\n- " + "\n- ".join(result.needs_seller_input))
+            edited = st.text_area(
+                "Your reply (edit it before sending)",
+                result.reply,
+                height=130,
+                key=f"reply-{draft.photo_id}-{image_hash(result.reply.encode())}",
+            )
+            copy_buttons([("Copy reply", edited)])
+
+    if draft.reply_history:
+        with st.expander(f"Past replies ({len(draft.reply_history)})"):
+            for entry in draft.reply_history:
+                st.caption(f"{entry.get('date', '')} · {entry.get('platform', '')}")
+                st.text(f"Buyer: {entry.get('message', '')}")
+                st.text(f"You: {entry.get('reply', '')}")
+                st.divider()
 
 
 @st.dialog("Delete this listing?")
@@ -628,30 +711,31 @@ def view_page() -> None:
         storage.update_status(draft.photo_id, status)
         go("view", toast=f"Marked as {status.capitalize()}")
 
-    details, listings, price, replies = st.tabs(["Details", "Listings", "Price", "Buyer replies"])
+    listings, replies, price, details = st.tabs(["Listings", "Buyer replies", "Price", "Details"])
+    with listings:
+        listing_tabs(draft, on_save=storage.save_listing)
+    with replies:
+        buyer_replies(draft)
+    with price:
+        with st.form(f"price-{draft.photo_id}", border=False):
+            asking, lowest = price_inputs(draft, f"view_{draft.photo_id}")  # per listing, so values don't carry over
+            if st.form_submit_button("Save prices", width="stretch"):
+                draft.asking_price = asking or None
+                draft.lowest_price = lowest or None
+                storage.save_listing(draft)
+                go("view", toast="Prices saved")
+        if draft.price:
+            show_price(draft.price)
+        else:
+            st.caption("No price research for this listing.")
     with details:
         if details_form(draft, "Save details"):
             storage.save_listing(draft)
             go("view", toast="Details saved")
         st.caption(
             "Saving details doesn't change your listing texts. To update them, "
-            'use "Ask Listly to change it" in the Listings tab.'
+            'use "Change this listing" in the Listings tab.'
         )
-    with listings:
-        listing_tabs(draft, on_save=storage.save_listing)
-    with price:
-        with st.form(f"price-{draft.photo_id}", border=False):
-            asking = st.number_input("Your listing price (₱)", min_value=0, value=int(draft.asking_price or 0), step=100)
-            if st.form_submit_button("Save price", width="stretch"):
-                draft.asking_price = int(asking) or None
-                storage.save_listing(draft)
-                go("view", toast="Price saved")
-        if draft.price:
-            show_price(draft.price)
-        else:
-            st.caption("No price research for this listing.")
-    with replies:
-        buyer_helper(draft)
 
     st.divider()
     if st.button("Delete listing", icon=":material/delete:", type="tertiary"):
@@ -662,4 +746,4 @@ def view_page() -> None:
 
 if state.page == "new" and (state.get("step", 1) > 1 and not state.get("draft")):
     state.page = "home"  # e.g. the browser tab was reloaded mid-listing
-{"home": home_page, "new": new_page, "view": view_page}[state.page]()
+{"home": home_page, "new": new_page, "view": view_page, "settings": settings_page}[state.page]()

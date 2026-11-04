@@ -4,6 +4,7 @@ Everything that comes from the model or the seller goes through escape(), so it 
 """
 
 import base64
+import json
 from datetime import datetime
 from functools import lru_cache
 from html import escape
@@ -68,14 +69,16 @@ def price_tag(amount: int | None) -> str:
 # --- whole pieces --------------------------------------------------------------------------------
 
 
-def top_bar(demo: bool) -> None:
-    demo_badge = '<span class="demo" title="Sample answers, no API calls, no credits used">Demo mode</span>' if demo else ""
+def top_bar() -> None:
     # The wordmark is text (not the logo image) so it stays readable in dark mode.
     html(
         f"""<div class="topbar"><img class="mark" src="{icon_src()}" alt="Listly logo">
-        <div><div class="name">listly</div><div class="tagline">One photo. Every marketplace.</div></div>
-        {demo_badge}</div>"""
+        <div><div class="name">listly</div><div class="tagline">One photo. Every marketplace.</div></div></div>"""
     )
+
+
+def demo_badge() -> None:
+    html('<span class="demo">Demo mode · sample answers, no credits used</span>')
 
 
 def section_header(title: str, count: int | None = None) -> None:
@@ -100,6 +103,61 @@ def step_bar(steps: list[str], current: int) -> None:
         dot = "✓" if number < current else str(number)
         parts.append(f'<div class="step {status}"><span class="dot">{dot}</span><span class="label">{escape(name)}</span></div>')
     html(f'<div class="stepper" aria-label="Step {current} of {len(steps)}">{"".join(parts)}</div>')
+
+
+def text_field(label: str, text: str, note: str = "") -> None:
+    """A read-only block of listing text with a small label (newlines kept)."""
+    body = escape(text).replace("\n", "<br>")  # html() joins lines, so keep line breaks as <br>
+    html(
+        f'<div class="field"><div class="field-label"><span>{escape(label)}</span><span>{escape(note)}</span></div>'
+        f'<div class="field-text">{body}</div></div>'
+    )
+
+
+COPY_CSS = """
+body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+.row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+button { height: 44px; border-radius: 12px; border: 1px solid #E2E6EA; background: #fff; color: #1C2430;
+         font: 600 14px Inter, system-ui, sans-serif; cursor: pointer; }
+button.primary { background: #0F766E; border-color: #0F766E; color: #fff; }
+button.wide { grid-column: 1 / -1; }
+@media (prefers-color-scheme: dark) {
+  button { background: #161D24; border-color: #2A333D; color: #E7ECF1; }
+  button.primary { background: #2DB3A3; border-color: #2DB3A3; color: #06231F; }
+}
+"""
+
+
+def copy_buttons(items: list[tuple[str, str]]) -> None:
+    """Real "Copy" buttons. They live in a tiny iframe because only JavaScript can write to the clipboard.
+
+    items = [(button label, text to copy)]. Two per row; the last one is the main (wide, coloured) button.
+    """
+    buttons = []
+    for i, (label, _) in enumerate(items):
+        last = i == len(items) - 1
+        kind = "primary" + (" wide" if len(items) % 2 == 1 else "") if last else ""
+        buttons.append(f'<button class="{kind}">{escape(label)}</button>')
+    # The texts come from the model or the seller, so they only ever appear as JSON data, with every "<"
+    # encoded: nothing inside them can end the script or add HTML. Labels are escaped above.
+    texts = json.dumps([text for _, text in items]).replace("<", "\\u003c")
+    rows = (len(items) + 1) // 2
+    st.iframe(
+        f"""<style>{COPY_CSS}</style><div class="row">{"".join(buttons)}</div>
+        <script>
+        const texts = {texts};
+        document.querySelectorAll("button").forEach((button, i) => button.addEventListener("click", async () => {{
+          const label = button.textContent;
+          try {{ await navigator.clipboard.writeText(texts[i]); }}
+          catch (e) {{  // older browsers: copy through a hidden text box instead
+            const box = document.createElement("textarea"); box.value = texts[i];
+            document.body.appendChild(box); box.select(); document.execCommand("copy"); box.remove();
+          }}
+          button.textContent = "✓ Copied"; setTimeout(() => button.textContent = label, 1500);
+        }}));
+        </script>""",
+        height=rows * 52,
+    )
 
 
 def listing_card(draft: ListingDraft, image: bytes | None) -> bool:

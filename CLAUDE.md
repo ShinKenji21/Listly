@@ -65,7 +65,7 @@ listly/
   clean_photo.py       # Muse Image
   pricing.py           # Muse Spark + web search
   writer.py            # per-platform listings + checker
-  buyer.py             # buyer reply helper (lowest-price guard)
+  replies.py           # buyer replies: seller questions, scam flags, lowest-price guard
   platforms.py         # platform profiles
   storage.py           # saved listings in data/ (JSON + photos)
   ui/theme.py          # all custom CSS (light + dark)
@@ -84,7 +84,9 @@ eval/
    Details (editable fields, flaws highlighted, follow-up questions) → Photo & price (original +
    clean photo with Download buttons, price range with source links, asking price) → Listings
    (language choice, one tab per platform with copy boxes, edit, "Open site") → Save listing.
-3. Saved listing — copy boxes, edit, buyer reply helper, delete.
+3. Saved listing — big photo, status switch, tabs: Listings (Copy buttons, Open site, change) / Buyer replies
+   (scam warnings, questions for the seller) / Price (listing + private lowest price) / Details; delete with confirm.
+4. Settings — meet-up spots, times, shipping, payment, swaps (data/settings.json), used by buyer replies.
 Saved listings are stored locally in `data/` (gitignored), with a status: Draft / Listed / Sold. Listly never posts for the seller
 and never asks for their passwords.
 

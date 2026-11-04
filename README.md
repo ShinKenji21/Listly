@@ -25,17 +25,21 @@ the busywork. The seller stays in control: they check and edit everything, and *
 3. **Clean photo:** Muse Image 1.0 places the cut-out on a clean white background, and is told never to change the
    item or hide its flaws. The original photo is always kept too.
 4. **Price:** Muse Spark uses its built-in web search (biased to the Philippines) to find comparable listings and the
-   brand-new price, then suggests a range in pesos. **Every source link is checked against the pages the search
-   actually returned**, so made-up links are dropped.
+   brand-new price, then suggests a range in pesos, a listing price, and a private lowest price to accept.
+   **Every source link is checked against the pages the search actually returned**, so made-up links are dropped.
 5. **Write:** Muse Spark writes a title, description and tags for each platform, in English, Filipino or Taglish,
    following that platform's profile (tone, title length, hashtags). A checker validates each listing in code,
    including that **every flaw is mentioned**, and asks the model to fix it once if needed. The seller can edit by
    hand or just ask: "make it shorter", "add that it comes with the box". Rewrites go through the same checker, so a
    request can't quietly drop a flaw.
-6. **Reply to buyers:** paste a buyer's message and set your lowest price; Muse Spark drafts a polite reply. Listly
-   double-checks the reply in code and never lets it offer less than your lowest price.
+6. **Reply to buyers:** paste a buyer's message from any platform. Muse Spark drafts a reply using the item details
+   and your selling settings (meet-up spots, times, shipping, payment, swaps), in your language and the platform's
+   tone. It never makes up answers: anything it can't answer comes back to you as a question. Listly checks the
+   reply in code so it **never offers less than your lowest price**, and **flags likely scams** (fake payment
+   screenshots, "courier" links, OTP requests, overpay-and-refund, moving off the platform) even if the model misses them.
 
-Saved listings live in "My listings" on your own computer (the `data/` folder), with a status (Draft, Listed, Sold) so you can keep track.
+Saved listings live in "My listings" on your own computer (the `data/` folder), with a status (Draft, Listed, Sold)
+so you can keep track. Each listing has real Copy buttons (title, description, everything) and an Open-site button.
 
 ## Meta models used
 
@@ -87,7 +91,7 @@ listly/
   clean_photo.py     Muse Image clean product photo
   pricing.py         Muse Spark + web search, verified comparables
   writer.py          per-platform listings + checker
-  buyer.py           buyer reply helper with a lowest-price guard
+  replies.py         buyer replies: seller questions, scam warnings, lowest-price guard
   platforms.py       platform profiles (adding a site = adding a profile)
   models.py          dataclasses and validation
   storage.py         saved listings in data/ (JSON + photos)

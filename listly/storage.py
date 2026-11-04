@@ -3,6 +3,7 @@
     data/listings/<id>.json      the listing (details, price, texts, status)
     data/photos/<id>-photo.jpg   the original photo (shrunk)
     data/photos/<id>-clean.jpg   the clean photo, if one was made
+    data/settings.json           the seller's meet-up, shipping and payment info
 
 Nothing is uploaded anywhere, and data/ is in .gitignore.
 """
@@ -11,7 +12,7 @@ import json
 import shutil
 from pathlib import Path
 
-from listly.models import STATUSES, ListingDraft
+from listly.models import STATUSES, ListingDraft, SellerSettings
 
 DATA_DIR = Path("data")
 OLD_DIR = Path("listings")  # where earlier versions of Listly saved listings
@@ -69,6 +70,18 @@ def load_photo(listing_id: str, kind: str) -> bytes | None:
     """kind is "photo" (the original, shrunk) or "clean"."""
     path = _photo_path(listing_id, kind)
     return path.read_bytes() if path.exists() else None
+
+
+def load_settings() -> SellerSettings:
+    try:
+        return SellerSettings.from_dict(json.loads((DATA_DIR / "settings.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError, AttributeError):
+        return SellerSettings()  # not saved yet (or unreadable): start empty
+
+
+def save_settings(settings: SellerSettings) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "settings.json").write_text(json.dumps(settings.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _move_old_listings() -> None:
