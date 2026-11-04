@@ -574,6 +574,19 @@ def view_page() -> None:
         f"{platform_chips(draft.platforms)}</div></div>"
     )
 
+    # Listly never posts and can't see the seller's accounts, so the seller sets the status themselves.
+    status = st.segmented_control(
+        "Status",
+        STATUSES,
+        default=draft.status,
+        format_func=str.capitalize,
+        key=f"status-{draft.photo_id}",
+        help="Draft: not posted yet · Listed: you posted it · Sold: it's gone. Only you see this.",
+    )
+    if status and status != draft.status:
+        storage.update_status(draft.photo_id, status)
+        go("view", toast=f"Marked as {status.capitalize()}")
+
     photo_pair(storage.load_photo(draft.photo_id, "photo"), storage.load_photo(draft.photo_id, "clean"))
     if draft.price:
         with st.expander("Price research"):
