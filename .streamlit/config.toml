@@ -6,19 +6,30 @@ toolbarMode = "minimal"
 gatherUsageStats = false
 
 [theme]
-# Listly's look: teal brand colour, soft grey background, white cards (cards are styled in style.css).
-base = "light"
-primaryColor = "#0F766E"
-backgroundColor = "#F5F7F8"
-secondaryBackgroundColor = "#EAF1F0"
-textColor = "#1F2933"
-linkColor = "#0F766E"
-borderColor = "#DDE3E6"
+# Shared by light and dark mode. Our own pieces are styled to match in listly/ui/theme.py.
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+codeFont = "Inter"  # copy boxes hold listing text, not code
+baseRadius = "12px"
+buttonRadius = "12px"
 showWidgetBorder = true
-baseRadius = "large"
-codeFont = "sans-serif"  # copy boxes hold listing text, not code
-headingFontWeights = [750, 700, 650, 600, 600, 600]
-headingFontSizes = ["2rem", "1.35rem", "1.12rem", "1rem", "1rem", "1rem"]
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+headingFontSizes = ["1.75rem", "1.3rem", "1.1rem", "1rem", "1rem", "1rem"]
+
+[theme.light]
+primaryColor = "#0F766E"
+backgroundColor = "#F6F7F9"
+secondaryBackgroundColor = "#F1F3F5"
+textColor = "#1C2430"
+linkColor = "#0F766E"
+borderColor = "#E2E6EA"
+
+[theme.dark]
+primaryColor = "#2DB3A3"
+backgroundColor = "#0F1419"
+secondaryBackgroundColor = "#1E262E"
+textColor = "#E7ECF1"
+linkColor = "#2DB3A3"
+borderColor = "#2A333D"
 
 [server]
 # Only this computer can open the app: no Network/External links, nothing reachable from other devices.

@@ -224,4 +224,5 @@ cache/
 
 # Listly: saved listings and eval photos stay on your own computer (never commit)
 listings/
+data/
 eval/photos/

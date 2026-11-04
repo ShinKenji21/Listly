@@ -1,14 +1,13 @@
 """Listly - Streamlit UI only. All model/image/cache logic lives in the listly/ package.
 
-Three pages: home (new photo + My listings), new (3 steps), view (one saved listing).
+Pages: home (Sell something new + My listings), new (4 steps), view (one saved listing).
 Streamlit reruns this whole script on every click, so "where we are" lives in st.session_state.
-Styling is in style.css; small HTML pieces below use its classes.
+The look lives in listly/ui (theme.py for styling, components.py for reusable pieces).
 """
 
 import copy
 from dataclasses import replace
 from html import escape
-from pathlib import Path
 
 import streamlit as st
 from PIL import UnidentifiedImageError
@@ -20,56 +19,47 @@ from listly.clean_photo import make_clean_photo
 from listly.config import DEMO_MODE, has_api_key
 from listly.cutout import cut_out
 from listly.identify import identify_item
-from listly.images import image_hash, shrink_image, thumbnail, to_data_url
-from listly.models import CONDITIONS, UNKNOWN, ListingDraft, PlatformListing, PriceEstimate
+from listly.images import image_hash, shrink_image
+from listly.models import CONDITIONS, STATUSES, UNKNOWN, ListingDraft, PlatformListing, PriceEstimate
 from listly.platforms import PLATFORMS
 from listly.pricing import suggest_price
-from listly.sample import SAMPLE_ID, make_sample
+from listly.sample import SAMPLE_PREFIX, make_samples
+from listly.ui.components import (
+    empty_state,
+    html,
+    image_src,
+    listing_card,
+    peso,
+    platform_chips,
+    section_header,
+    status_badge,
+    step_bar,
+    title_of,
+    top_bar,
+)
+from listly.ui.theme import apply_theme
 from listly.writer import LANGUAGES, check, revise_listing, write_listing
 
-
-def html(markup: str) -> None:
-    """Show our own HTML. st.markdown (not st.html) because st.html is isolated from style.css.
-
-    Lines are joined first: Markdown would turn indented lines into a code block.
-    """
-    st.markdown("".join(line.strip() for line in markup.splitlines()), unsafe_allow_html=True)
-
-
 st.set_page_config(page_title="Listly", page_icon="🏷️")
-st.markdown(f"<style>{(Path(__file__).parent / 'style.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+apply_theme()
 state = st.session_state
 state.setdefault("page", "home")
+if "toast" in state:
+    st.toast(state.pop("toast"))  # set before a rerun, shown after it
 
-STEPS = ["Details", "Photo & price", "Listings"]
+STEPS = ["Photo", "Details", "Photo & price", "Listings"]
+SOURCES = ["Upload photo", "Take photo"]
 
 
 # --- small helpers -------------------------------------------------------------------------------
 
 
 def go(page: str, **values) -> None:
-    """Switch page (and set any extra state), then redraw."""
+    """Switch page (and set any extra state, e.g. toast="Saved"), then redraw."""
     state.page = page
     for name, value in values.items():
         state[name] = value
     st.rerun()
-
-
-def peso(amount: int | None) -> str:
-    return f"₱{amount:,}" if amount else "No price set"
-
-
-def title_of(draft: ListingDraft) -> str:
-    first = next(iter(draft.listings.values()), None)
-    return first.title if first else draft.info.item.capitalize()
-
-
-def sites_of(draft: ListingDraft) -> str:
-    return " · ".join(PLATFORMS[k].name.split()[0] for k in draft.platforms if k in PLATFORMS)
-
-
-def thumb_src(image_bytes: bytes | None) -> str:
-    return to_data_url(thumbnail(image_bytes)) if image_bytes else ""
 
 
 def as_input(value: str) -> str:
@@ -93,42 +83,11 @@ def copy_box(label: str, text: str) -> None:
     st.code(text, language=None, wrap_lines=True)
 
 
-def section_title(text: str, count: int | None = None) -> None:
-    extra = f'<span class="count">{count}</span>' if count else ""
-    html(f'<div class="section-title"><h3>{escape(text)}</h3>{extra}</div>')
-
-
-# Everything that came from the model or the seller goes through escape(), so it can't inject HTML.
-
-
-def hero() -> None:
-    badge = '<span class="badge">Demo mode · no credits used</span>' if DEMO_MODE else ""
-    html(
-        f"""<div class="hero">
-          <div class="brand"><span class="logo">🏷️</span><span class="name">Listly</span>{badge}</div>
-          <p class="tagline">One photo in. A ready-to-post listing out.</p>
-          <div class="how"><span>📸 Identify</span><span>✂️ Clean photo</span><span>💸 Fair price</span>
-          <span>📝 3 platforms</span><span>💬 Buyer replies</span></div>
-        </div>"""
-    )
-
-
-def step_bar(step: int) -> None:
-    parts = []
-    for number, name in enumerate(STEPS, start=1):
-        status = "done" if number < step else "current" if number == step else ""
-        dot = "✓" if number < step else str(number)
-        if number > 1:
-            parts.append(f'<div class="bar {"done" if number <= step else ""}"></div>')
-        parts.append(f'<div class="step {status}"><span class="dot">{dot}</span><span class="label">{escape(name)}</span></div>')
-    html(f'<div class="stepper">{"".join(parts)}</div>')
-
-
 def item_row(image_bytes: bytes, title: str, chips: list[tuple[str, str]]) -> None:
-    """Thumbnail + name + small coloured chips. chips = [(text, "good" | "warn" | "")]."""
+    """Thumbnail + name + small chips. chips = [(text, "good" | "warn" | "")]."""
     chip_html = "".join(f'<span class="chip {kind}">{escape(text)}</span>' for text, kind in chips)
     html(
-        f'<div class="item-row"><img src="{thumb_src(image_bytes)}" alt="">'
+        f'<div class="item-row"><img src="{image_src(image_bytes)}" alt="">'
         f'<div><div class="title">{escape(title)}</div><div class="chips">{chip_html}</div></div></div>'
     )
 
@@ -156,7 +115,7 @@ def show_price(price: PriceEstimate) -> None:
 
 
 def listing_tabs(draft: ListingDraft, on_save=None) -> None:
-    """One tab per platform: copy boxes, an editor and an Open-site button."""
+    """One tab per platform: copy boxes, rewrite-by-request, an editor and an Open-site button."""
     keys = [k for k in draft.platforms if k in PLATFORMS]
     for key, tab in zip(keys, st.tabs([PLATFORMS[k].name for k in keys])):
         platform = PLATFORMS[key]
@@ -184,11 +143,11 @@ def listing_tabs(draft: ListingDraft, on_save=None) -> None:
 
             with st.form(f"ask-{key}", border=False, clear_on_submit=True):
                 request = st.text_input(
-                    "✨ Ask Listly to change it",
+                    "Ask Listly to change it",
                     placeholder="e.g. make it shorter · add that it comes with the box",
                 )
                 if st.form_submit_button("Rewrite", width="stretch") and request.strip():
-                    with st.spinner("Rewriting..."):
+                    with st.spinner("Rewriting your listing…"):
                         try:
                             draft.listings[key] = revise_listing(draft, platform, listing, request)
                             if on_save:
@@ -197,7 +156,7 @@ def listing_tabs(draft: ListingDraft, on_save=None) -> None:
                         except StepError as e:
                             st.error(str(e))
 
-            with st.expander("✏️ Edit it yourself"):
+            with st.expander("Edit it yourself"):
                 with st.form(f"edit-{key}", border=False):
                     title = st.text_input("Title", listing.title)
                     description = st.text_area("Description", listing.description, height=220)
@@ -221,14 +180,14 @@ def listing_tabs(draft: ListingDraft, on_save=None) -> None:
 # --- home ----------------------------------------------------------------------------------------
 
 
-def start_listing(image_bytes: bytes, info, platforms: list[str]) -> None:
+def begin_new(source: str) -> None:
+    """Start a fresh listing at the Photo step."""
     go(
         "new",
         step=1,
-        image=image_bytes,
-        raw_info=info,  # Muse Spark's own answer, kept for its confidence score
-        # Copy so the seller's edits never change the model's original answer.
-        draft=ListingDraft(photo_id=image_hash(image_bytes), info=copy.deepcopy(info), platforms=platforms),
+        source=source,
+        image=None,
+        draft=None,
         clean=None,
         photo_notes=[],
         photo_tried=False,
@@ -239,92 +198,144 @@ def start_listing(image_bytes: bytes, info, platforms: list[str]) -> None:
     )
 
 
-def new_listing_form() -> None:
-    source = st.segmented_control("Photo from", ["Upload", "Camera"], default="Upload") or "Upload"
+def add_samples() -> None:
+    for draft, photo in make_samples():
+        storage.save_listing(draft, photo)
+    go("home", toast="Added 3 sample listings")
+
+
+def sell_card() -> None:
+    with st.container(key="card-sell"):
+        html(
+            '<div class="sell-title">Sell something new</div>'
+            '<div class="sell-sub">Take one photo. Listly identifies the item, cleans up the photo, '
+            "finds a fair price and writes your listings.</div>"
+        )
+        if not (DEMO_MODE or has_api_key()):
+            # Someone who downloaded the repo without a key should still be able to see the app working.
+            st.warning(
+                "No API key found. Copy .env.example to .env and add your own META_API_KEY. "
+                "No key? Set LISTLY_DEMO=1 in .env, or add the sample listings below."
+            )
+            return
+        with st.container(key="pair_sell"):
+            upload, take = st.columns(2)
+            if upload.button("Upload photo", type="primary", icon=":material/upload:", width="stretch"):
+                begin_new("Upload photo")
+            if take.button("Take photo", icon=":material/photo_camera:", width="stretch"):
+                begin_new("Take photo")
+
+
+def my_listings() -> None:
+    listings = storage.list_listings()
+    section_header("My listings", len(listings))
+    if not listings:
+        empty_state("No listings yet", "Snap your first item and Listly does the rest.")
+        with st.container(key="pair_empty"):
+            first, samples = st.columns(2)
+            if first.button("Snap your first item", type="primary", width="stretch"):
+                begin_new("Take photo")
+            if samples.button("Add sample listings", width="stretch"):
+                add_samples()
+        return
+
+    query = st.text_input(
+        "Search your listings",
+        placeholder="Search by name or brand",
+        icon=":material/search:",
+        label_visibility="collapsed",
+    )
+    counts = {status: sum(d.status == status for d in listings) for status in STATUSES}
+    choice = st.segmented_control(
+        "Filter by status",
+        ["all"] + STATUSES,
+        default="all",
+        format_func=lambda s: f"All {len(listings)}" if s == "all" else f"{s.capitalize()} {counts[s]}",
+        label_visibility="collapsed",
+    ) or "all"
+
+    words = query.lower().split()
+    shown = [
+        d for d in listings
+        if (choice == "all" or d.status == choice)
+        and all(w in f"{title_of(d)} {d.info.item} {d.info.brand}".lower() for w in words)
+    ]
+    if not shown:
+        st.caption("No listings match.")
+    with st.container(key="grid"):
+        for draft in shown:
+            image = storage.load_photo(draft.photo_id, "clean") or storage.load_photo(draft.photo_id, "photo")
+            if listing_card(draft, image):
+                go("view", view_id=draft.photo_id)
+
+    if not any(d.photo_id.startswith(SAMPLE_PREFIX) for d in listings):
+        if st.button("Add sample listings", type="tertiary"):
+            add_samples()
+
+
+def home_page() -> None:
+    top_bar(DEMO_MODE)
+    sell_card()
+    my_listings()
+    html('<div class="footer">Listly never posts for you · Your listings stay on this computer</div>')
+
+
+# --- new listing: 4 steps ------------------------------------------------------------------------
+
+
+def nav_buttons(back_step: int | None, forward_label: str, disabled: bool = False) -> bool:
+    """Back + forward side by side. back_step None = back to home. Returns True when forward is pressed."""
+    with st.container(key="pair_nav"):
+        back, forward = st.columns(2)
+        if back.button("← Back" if back_step else "Cancel", width="stretch"):
+            if back_step:
+                go("new", step=back_step)
+            go("home")
+        return forward.button(forward_label, type="primary", width="stretch", disabled=disabled)
+
+
+def photo_step() -> None:
+    default = state.get("source", SOURCES[0])
+    source = st.segmented_control("Photo from", SOURCES, default=default, label_visibility="collapsed") or default
     photo = (
         st.file_uploader("Upload a photo of the item", type=["jpg", "jpeg", "png", "webp"])
-        if source == "Upload"
+        if source == "Upload photo"
         else st.camera_input("Take a photo of the item")
     )
     names = {p.name: key for key, p in PLATFORMS.items()}
     chosen = st.pills("Sell on", list(names), selection_mode="multi", default=list(names))
-    if not photo:
-        return
 
-    try:
-        image_bytes = shrink_image(photo.getvalue())
-    except UnidentifiedImageError:
-        st.error("That file doesn't look like a photo. Try a JPG or PNG.")
-        return
-    st.image(image_bytes, width=220)
-    if not chosen:
+    image_bytes = None
+    if photo:
+        try:
+            image_bytes = shrink_image(photo.getvalue())
+            st.image(image_bytes, width=240)
+        except UnidentifiedImageError:
+            st.error("That file doesn't look like a photo. Try a JPG or PNG.")
+    if image_bytes and not chosen:
         st.caption("Pick at least one place to sell.")
-        return
 
-    if st.button("Identify item  →", type="primary", width="stretch"):
-        with st.spinner("Looking at your item..."):
+    if nav_buttons(None, "Next  →", disabled=not (image_bytes and chosen)):
+        with st.spinner("Looking at your item…"):
             try:
                 info = identify_item(image_bytes)
             except StepError as e:
-                st.error(str(e))  # the seller can press the button again to retry
+                st.error(str(e))  # the seller can press Next again to retry
                 return
         if info.prohibited:
             reason = f": {info.prohibited_reason}" if info.prohibited_reason != UNKNOWN else "."
             st.error("Listly can't help list this item" + reason)
             return
-        start_listing(image_bytes, info, [names[n] for n in chosen])
-
-
-def listing_card(draft: ListingDraft) -> None:
-    image = storage.photo(draft.photo_id, "clean") or storage.photo(draft.photo_id, "photo")
-    with st.container(key=f"card-{draft.photo_id}"):
-        html(
-            f'<div class="lcard"><img src="{thumb_src(image)}" alt="">'
-            f'<div><div class="ltitle">{escape(title_of(draft))}</div>'
-            f'<div class="lmeta"><span class="lprice">{escape(peso(draft.asking_price))}</span>'
-            f" · {escape(sites_of(draft))}</div>"
-            f'<div class="lmeta">{escape(draft.created)}</div></div></div>'
+        go(
+            "new",
+            step=2,
+            image=image_bytes,
+            raw_info=info,  # Muse Spark's own answer, kept for its confidence score
+            # Copy so the seller's edits never change the model's original answer.
+            draft=ListingDraft(
+                photo_id=image_hash(image_bytes), info=copy.deepcopy(info), platforms=[names[n] for n in chosen]
+            ),
         )
-        if st.button("Open listing", key=f"open-{draft.photo_id}", width="stretch"):
-            go("view", view_id=draft.photo_id)
-
-
-def home_page() -> None:
-    hero()
-    with st.container(key="card-new"):
-        st.subheader("New listing")
-        if DEMO_MODE or has_api_key():
-            new_listing_form()
-        else:
-            # Someone who downloaded the repo without a key should still be able to see the app working.
-            st.warning(
-                "No API key found. Copy .env.example to .env and add your own META_API_KEY.\n\n"
-                "No key? Set LISTLY_DEMO=1 in .env to try it with sample results, or open the sample below."
-            )
-
-    saved = storage.load_all()
-    section_title("My listings", len(saved))
-    if not saved:
-        html('<div class="empty">No listings yet.<br>Add a photo above to make your first one.</div>')
-    for draft in saved:
-        listing_card(draft)
-    if all(d.photo_id != SAMPLE_ID for d in saved) and st.button("✨ Try a sample listing", width="stretch"):
-        draft, photo = make_sample()
-        storage.save(draft, photo)
-        go("view", view_id=draft.photo_id)
-    html('<div class="footer">Listly never posts for you · Your listings stay on this computer</div>')
-
-
-# --- new listing: 3 steps ------------------------------------------------------------------------
-
-
-def nav_buttons(back_step: int | None, forward_label: str, disabled: bool = False) -> bool:
-    """Back + forward buttons side by side. Returns True when forward is pressed."""
-    with st.container(key="pair_nav"):
-        back, forward = st.columns(2)
-        if back_step and back.button("← Back", width="stretch"):
-            go("new", step=back_step)
-        return forward.button(forward_label, type="primary", width="stretch", disabled=disabled)
 
 
 def details_step(draft: ListingDraft) -> None:
@@ -392,14 +403,16 @@ def details_step(draft: ListingDraft) -> None:
         draft.answers = {q: a.strip() for q, a in answers.items() if a.strip()}
         # New details can change the price and the texts; unchanged details come from the cache for free.
         draft.price, draft.listings = None, {}
-        go("new", step=2, price_tried=False, price_error=None, writer_tried=False)
+        go("new", step=3, price_tried=False, price_error=None, writer_tried=False)
+    if st.button("← Back to photo", type="tertiary"):
+        go("new", step=1)
 
 
 def run_photo_steps(draft: ListingDraft) -> None:
     """Cut-out then clean photo. Each step can fail on its own and falls back instead of stopping."""
     state.photo_tried = True
     notes, source = [], state.image
-    with st.spinner("Cutting out your item and cleaning up the photo..."):
+    with st.spinner("Cleaning up your photo…"):
         try:
             cut = cut_out(state.image, draft.info)
             source = cut.png
@@ -421,7 +434,7 @@ def photo_pair(original: bytes | None, clean: bytes | None, retry: bool = False)
             left.image(original, caption="Original")
             left.download_button("Download", original, "listly-original.jpg", "image/jpeg", width="stretch", key="dl-orig")
         if clean:
-            right.image(clean, caption="Clean photo ✨")
+            right.image(clean, caption="Clean photo")
             right.download_button("Download", clean, "listly-clean.jpg", "image/jpeg", width="stretch", key="dl-clean")
         elif retry and right.button("Try the clean photo again", width="stretch"):
             state.photo_tried = False
@@ -439,7 +452,7 @@ def photo_price_step(draft: ListingDraft) -> None:
     st.subheader("Price")
     if draft.price is None and not state.price_tried:
         state.price_tried = True
-        with st.spinner("Searching the web for similar listings..."):
+        with st.spinner("Checking prices of similar items…"):
             try:
                 draft.price = suggest_price(draft)
                 state.price_error = None
@@ -454,13 +467,13 @@ def photo_price_step(draft: ListingDraft) -> None:
         show_price(draft.price)
 
     suggested = round((draft.price.price_low + draft.price.price_high) / 2, -2) if draft.price else 0
-    asking = st.number_input("Your asking price (₱)", min_value=0, value=int(draft.asking_price or suggested), step=100)
+    asking = st.number_input("Your listing price (₱)", min_value=0, value=int(draft.asking_price or suggested), step=100)
 
-    if nav_buttons(1, "Continue  →"):
+    if nav_buttons(2, "Next  →"):
         if draft.asking_price != (asking or None):
             draft.listings = {}  # the texts mention the price, so a new price means new texts
         draft.asking_price = int(asking) or None
-        go("new", step=3, writer_tried=False)
+        go("new", step=4, writer_tried=False)
 
 
 def listings_step(draft: ListingDraft) -> None:
@@ -472,7 +485,7 @@ def listings_step(draft: ListingDraft) -> None:
     missing = [k for k in draft.platforms if k not in draft.listings]
     if missing and not state.writer_tried:
         state.writer_tried, state.writer_errors = True, {}
-        with st.spinner("Writing your listings..."):
+        with st.spinner("Writing your listings…"):
             for key in missing:
                 try:
                     draft.listings[key] = write_listing(draft, PLATFORMS[key])
@@ -481,16 +494,19 @@ def listings_step(draft: ListingDraft) -> None:
 
     listing_tabs(draft)
 
-    if nav_buttons(2, "Save listing ✓", disabled=not draft.listings):
-        storage.save(draft, state.image, state.clean)
-        go("view", view_id=draft.photo_id, just_saved=True)
+    if nav_buttons(3, "Save listing ✓", disabled=not draft.listings):
+        storage.save_listing(draft, state.image, state.clean)
+        go("view", view_id=draft.photo_id, toast="Listing saved")
 
 
 def new_page() -> None:
-    if st.button("← Home", type="tertiary"):
+    if st.button("← My listings", type="tertiary"):
         go("home")
-    step_bar(state.step)
-    [details_step, photo_price_step, listings_step][state.step - 1](state.draft)
+    step_bar(STEPS, state.step)
+    if state.step == 1:
+        photo_step()
+    else:
+        [details_step, photo_price_step, listings_step][state.step - 2](state.draft)
 
 
 # --- one saved listing ---------------------------------------------------------------------------
@@ -498,7 +514,7 @@ def new_page() -> None:
 
 def buyer_helper(draft: ListingDraft) -> None:
     with st.container(key="card-buyer"):
-        st.subheader("💬 Reply to a buyer")
+        st.subheader("Reply to a buyer")
         st.caption("Paste what the buyer wrote. Listly drafts a polite reply and never goes below your lowest price.")
         with st.form("buyer", border=False):
             message = st.text_area("Buyer's message", placeholder="Hi! Last price? Can you do ₱1,200?")
@@ -512,7 +528,7 @@ def buyer_helper(draft: ListingDraft) -> None:
             if not message.strip() or not lowest:
                 st.error("Paste the buyer's message and set your lowest price.")
             else:
-                with st.spinner("Writing a reply..."):
+                with st.spinner("Writing a reply…"):
                     try:
                         replies[draft.photo_id] = draft_reply(draft, message, int(lowest))
                     except StepError as e:
@@ -522,36 +538,36 @@ def buyer_helper(draft: ListingDraft) -> None:
 
 
 def view_page() -> None:
-    draft = storage.load(state.get("view_id", ""))
-    if st.button("← Home", type="tertiary"):
+    draft = storage.load_listing(state.get("view_id", ""))
+    if st.button("← My listings", type="tertiary"):
         go("home")
     if draft is None:
         st.error("This listing couldn't be opened.")
         return
-    if state.pop("just_saved", False):
-        st.success("Saved to My listings.")
 
-    chips = f'<span class="chip good">{escape(peso(draft.asking_price))}</span>'
-    chips += f'<span class="chip">{escape(sites_of(draft))}</span><span class="chip">{escape(draft.created)}</span>'
-    html(f'<div class="page-head"><h2>{escape(title_of(draft))}</h2><div class="chips">{chips}</div></div>')
+    html(
+        f'<div class="page-head"><h2>{escape(title_of(draft))}</h2>'
+        f'<div class="chips">{status_badge(draft.status)}<span class="chip good">{escape(peso(draft.asking_price))}</span>'
+        f"{platform_chips(draft.platforms)}</div></div>"
+    )
 
-    photo_pair(storage.photo(draft.photo_id, "photo"), storage.photo(draft.photo_id, "clean"))
+    photo_pair(storage.load_photo(draft.photo_id, "photo"), storage.load_photo(draft.photo_id, "clean"))
     if draft.price:
-        with st.expander("💸 Price research"):
+        with st.expander("Price research"):
             show_price(draft.price)
 
-    section_title("Your listings")
-    listing_tabs(draft, on_save=storage.save)
+    section_header("Your listings")
+    listing_tabs(draft, on_save=storage.save_listing)
     buyer_helper(draft)
 
     with st.expander("Delete this listing"):
         if st.button("Delete for good", type="primary"):
-            storage.delete(draft.photo_id)
-            go("home")
+            storage.delete_listing(draft.photo_id)
+            go("home", toast="Listing deleted")
 
 
 # --- which page to show --------------------------------------------------------------------------
 
-if state.page == "new" and "draft" not in state:
+if state.page == "new" and (state.get("step", 1) > 1 and not state.get("draft")):
     state.page = "home"  # e.g. the browser tab was reloaded mid-listing
 {"home": home_page, "new": new_page, "view": view_page}[state.page]()

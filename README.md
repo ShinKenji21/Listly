@@ -33,7 +33,7 @@ the busywork. The seller stays in control: they check and edit everything, and *
 6. **Reply to buyers:** paste a buyer's message and set your lowest price; Muse Spark drafts a polite reply. Listly
    double-checks the reply in code and never lets it offer less than your lowest price.
 
-Saved listings live in "My listings" on your own computer (the `listings/` folder), ready to copy again later.
+Saved listings live in "My listings" on your own computer (the `data/` folder), with a status (Draft, Listed, Sold) so you can keep track.
 
 ## Meta models used
 
@@ -71,14 +71,14 @@ Open the link Streamlit prints (usually http://localhost:8501). On a phone on th
   the clean photo fails, the original is still there. Every step has its own "Try again".
 - **Model output is validated:** all model replies are JSON, checked into dataclasses (`listly/models.py`); bad
   replies show a friendly error instead of crashing.
-- **Private by default:** your API key stays in `.env`, your listings stay in `listings/` on your computer, and
+- **Private by default:** your API key stays in `.env`, your listings stay in `data/` on your computer, and
   nothing is posted anywhere.
 
 ## Project structure
 
 ```
 app.py               Streamlit UI: home, 3-step new listing, saved listing
-style.css            Listly's look (theme colours are in .streamlit/config.toml)
+.streamlit/config.toml  light and dark theme colours, Inter font
 listly/
   identify.py        Muse Spark: item, flaws, follow-up questions
   cutout.py          SAM 3.1 cut-out + one_bit mask decoder
@@ -88,8 +88,10 @@ listly/
   buyer.py           buyer reply helper with a lowest-price guard
   platforms.py       platform profiles (adding a site = adding a profile)
   models.py          dataclasses and validation
-  storage.py         saved listings on disk
-  api.py, cache.py, config.py, images.py, sample.py
+  storage.py         saved listings in data/ (JSON + photos)
+  ui/theme.py        all custom styling (light and dark)
+  ui/components.py   reusable pieces: listing card, badges, step bar, ...
+  api.py, cache.py, config.py, images.py, sample.py (3 sample listings)
 eval/
   items.csv          test items with known answers (photos go in eval/photos/, not committed)
   run_eval.py        scores identification, condition, flaws and price range

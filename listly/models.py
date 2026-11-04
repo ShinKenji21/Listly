@@ -7,6 +7,7 @@ from datetime import datetime
 UNKNOWN = "unknown"
 CONDITIONS = ["new", "like new", "good", "fair", "poor"]
 CONFIDENCES = ["high", "medium", "low"]
+STATUSES = ["draft", "listed", "sold"]  # where a saved listing is in the seller's own process
 
 
 def _text(value) -> str:
@@ -196,6 +197,7 @@ class ListingDraft:
     language: str = "English"
     listings: dict[str, PlatformListing] = field(default_factory=dict)  # platform key -> texts
     created: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
+    status: str = "draft"  # one of STATUSES; the seller changes it (Listly never posts anything itself)
 
     def describe(self) -> str:
         """The item details as plain text lines, for prompts."""
@@ -229,4 +231,5 @@ class ListingDraft:
             language=str(data.get("language") or "English"),
             listings={k: PlatformListing.from_dict(v) for k, v in (data.get("listings") or {}).items()},
             created=str(data.get("created") or ""),
+            status=data.get("status") if data.get("status") in STATUSES else "draft",
         )

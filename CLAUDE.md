@@ -67,8 +67,10 @@ listly/
   writer.py            # per-platform listings + checker
   buyer.py             # buyer reply helper (lowest-price guard)
   platforms.py         # platform profiles
-  storage.py           # saved listings in listings/
-  sample.py            # sample listing for people without a key
+  storage.py           # saved listings in data/ (JSON + photos)
+  ui/theme.py          # all custom CSS (light + dark)
+  ui/components.py     # listing_card, status_badge, step_bar, ...
+  sample.py            # 3 sample listings for people without a key
   api.py               # shared API call + error handling
   models.py            # dataclasses: ItemInfo, PriceEstimate, Comparable, PlatformListing, ListingDraft
 eval/
@@ -83,7 +85,7 @@ eval/
    clean photo with Download buttons, price range with source links, asking price) → Listings
    (language choice, one tab per platform with copy boxes, edit, "Open site") → Save listing.
 3. Saved listing — copy boxes, edit, buyer reply helper, delete.
-Saved listings are stored locally in `listings/` (gitignored). Listly never posts for the seller
+Saved listings are stored locally in `data/` (gitignored), with a status: Draft / Listed / Sold. Listly never posts for the seller
 and never asks for their passwords.
 
 ## Platform profiles
