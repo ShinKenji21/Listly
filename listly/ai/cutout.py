@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from listly import cache
-from listly.api import StepError, create_response
+from listly.ai.api import StepError, create_response
 from listly.config import DEMO_MODE
 from listly.images import image_hash, to_data_url
 from listly.models import UNKNOWN, ItemInfo

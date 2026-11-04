@@ -5,7 +5,7 @@ import re
 from dataclasses import asdict, replace
 
 from listly import cache
-from listly.api import StepError, create_response, parse_json
+from listly.ai.api import StepError, create_response, parse_json
 from listly.config import DEMO_MODE, MODEL
 from listly.images import image_hash
 from listly.models import ListingDraft, PlatformListing

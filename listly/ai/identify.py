@@ -1,7 +1,7 @@
 """Step 1: ask Muse Spark what the item in the photo is."""
 
 from listly import cache
-from listly.api import StepError, create_response, parse_json
+from listly.ai.api import StepError, create_response, parse_json
 from listly.config import DEMO_MODE, MODEL
 from listly.images import image_hash, to_data_url
 from listly.models import ItemInfo

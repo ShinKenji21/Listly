@@ -1,0 +1,25 @@
+[project]
+name = "listly"
+version = "1.0.0"
+description = "One photo in, ready-to-post listings out, built with Meta's Muse Spark, SAM 3.1 and Muse Image."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = [".venv", "cache", "data"]
+
+[tool.ruff.lint]
+# E/F: errors and pyflakes, I: import order, B: likely bugs, UP: modern Python syntax
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # long prompt strings and HTML are easier to read on one line
+
+[tool.ruff.lint.per-file-ignores]
+"eval/run_eval.py" = ["E402"]  # sys.path is set before the listly imports on purpose

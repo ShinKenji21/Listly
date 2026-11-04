@@ -1,9 +1,8 @@
 """Step 4: Muse Spark + web search finds comparable listings and suggests a price range in PHP."""
 
-import json
 
 from listly import cache
-from listly.api import StepError, create_response, parse_json
+from listly.ai.api import StepError, create_response, parse_json
 from listly.config import DEMO_MODE, MODEL
 from listly.images import image_hash
 from listly.models import ListingDraft, PriceEstimate

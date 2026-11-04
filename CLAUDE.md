@@ -52,31 +52,34 @@ User flow:
   Add short comments explaining *why*, not *what*.
 - Make small changes, one step at a time. After each step, tell me how to run and test it.
 
-## Suggested structure
+## Project structure
 ```
-app.py                 # Streamlit UI only
+app.py                     # entry point only: page setup + which screen to show
 listly/
-  __init__.py
-  config.py            # env vars, client setup
-  images.py            # resize, hashing
-  cache.py             # disk cache helpers
-  identify.py          # Muse Spark: item + flaws + questions
-  cutout.py            # SAM 3.1 + one_bit mask decoder (port of @meta-sam/parser, SAM License)
-  clean_photo.py       # Muse Image
-  pricing.py           # Muse Spark + web search
-  writer.py            # per-platform listings + checker
-  replies.py           # buyer replies: seller questions, scam flags, lowest-price guard
-  platforms.py         # platform profiles
-  storage.py           # saved listings in data/ (JSON + photos)
-  ui/theme.py          # all custom CSS (light + dark)
-  ui/components.py     # listing_card, status_badge, step_bar, ...
-  sample.py            # 3 sample listings for people without a key
-  api.py               # shared API call + error handling
-  models.py            # dataclasses: ItemInfo, PriceEstimate, Comparable, PlatformListing, ListingDraft
-eval/
-  items.csv            # 30 test items with known answers
-  run_eval.py          # scores identification, flaws, price range
+  ai/                      # everything that calls Meta's models
+    api.py                 # shared API call: errors (never leaks the key), timing, JSON parsing
+    identify.py            # Muse Spark: item + flaws + highlights + questions
+    cutout.py              # SAM 3.1 + one_bit mask decoder (port of @meta-sam/parser, SAM License)
+    clean_photo.py         # Muse Image
+    pricing.py             # Muse Spark + web search
+    writer.py              # per-platform listings + checker + rewrite on request
+    replies.py             # buyer replies: seller questions, scam flags, lowest-price guard
+  ui/
+    pages/                 # one module per screen, each with render(): home, new_listing, listing, settings
+    sections.py            # sections shared by screens
+    components.py          # small reusable pieces (listing_card, step_bar, copy_buttons, ...)
+    theme.py               # all custom CSS (light + dark)
+    state.py               # page navigation (go)
+  models.py                # dataclasses + validation: ItemInfo, PriceEstimate, PlatformListing, ListingDraft, SellerSettings
+  platforms.py             # platform profiles
+  storage.py               # saved listings + settings in data/
+  cache.py, config.py, images.py, sample.py
+tests/                     # pytest; fake Meta API in conftest.py, so tests never spend credits
+eval/                      # 30-item eval with real API calls (asks before spending)
+assets/                    # logo + icon
 ```
+- Run `pytest` and `ruff check .` before committing; CI runs both on every push.
+- New AI calls go in `listly/ai/` through `api.create_response`, with a test using the `fake_api` fixture.
 
 ## Screens (phone-first)
 1. Home — new listing (Upload / Camera, "Sell on" platform pills), "My listings" cards, "Try a sample".

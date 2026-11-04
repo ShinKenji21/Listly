@@ -4,10 +4,10 @@ import io
 
 from PIL import Image, ImageDraw
 
-from listly import identify, pricing
+from listly.ai import identify, pricing
+from listly.ai.writer import demo_listing
 from listly.models import ItemInfo, ListingDraft, PlatformListing, PriceEstimate
 from listly.platforms import PLATFORMS
-from listly.writer import demo_listing
 
 SAMPLE_PREFIX = "sample-"
 

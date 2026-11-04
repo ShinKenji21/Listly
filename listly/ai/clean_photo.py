@@ -6,7 +6,7 @@ import io
 from PIL import Image
 
 from listly import cache
-from listly.api import StepError, create_response
+from listly.ai.api import StepError, create_response
 from listly.config import DEMO_MODE
 from listly.images import image_hash, to_data_url
 
@@ -63,8 +63,8 @@ def make_clean_photo(source_png: bytes) -> bytes:
         raise StepError("Muse Image didn't send back a picture. Try again.")
     try:
         jpeg = _to_jpeg(base64.b64decode(image_b64))
-    except (ValueError, OSError):  # bad base64, or bytes Pillow can't open
-        raise StepError("Muse Image sent back a picture we couldn't open. Try again.")
+    except (ValueError, OSError) as e:  # bad base64, or bytes Pillow can't open
+        raise StepError("Muse Image sent back a picture we couldn't open. Try again.") from e
 
     cache.save_bytes(STEP, key, "jpg", jpeg)
     return jpeg

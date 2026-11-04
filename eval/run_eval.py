@@ -14,11 +14,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # so "listly" imports from the repo root
 
 from listly import cache  # noqa: E402
-from listly.api import StepError  # noqa: E402
-from listly.identify import STEP as IDENTIFY_STEP, cache_key, identify_item  # noqa: E402
+from listly.ai.api import StepError  # noqa: E402
+from listly.ai.identify import STEP as IDENTIFY_STEP  # noqa: E402
+from listly.ai.identify import cache_key, identify_item
+from listly.ai.pricing import suggest_price  # noqa: E402
 from listly.images import image_hash, shrink_image  # noqa: E402
 from listly.models import CONDITIONS, UNKNOWN, ListingDraft  # noqa: E402
-from listly.pricing import suggest_price  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PHOTOS = HERE / "photos"
@@ -73,7 +74,7 @@ def main() -> None:
         return
 
     results = []
-    for (row, path), img in zip(items, images):
+    for (row, _path), img in zip(items, images, strict=True):
         result = {"photo": row["photo"]}
         try:
             info = identify_item(img)

@@ -1,5 +1,6 @@
-openai
-streamlit
-python-dotenv
-pillow
-numpy
+# Minimum versions Listly is tested with (st.iframe and light/dark themes need Streamlit 1.66+).
+openai>=3.41
+streamlit>=1.66
+python-dotenv>=1.2
+pillow>=13.0
+numpy>=2.5

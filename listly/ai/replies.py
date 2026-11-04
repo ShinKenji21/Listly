@@ -10,12 +10,12 @@ import re
 from dataclasses import dataclass, field
 
 from listly import cache
-from listly.api import StepError, create_response, parse_json
+from listly.ai.api import StepError, create_response, parse_json
+from listly.ai.writer import LANGUAGES
 from listly.config import DEMO_MODE, MODEL
 from listly.images import image_hash
-from listly.models import ListingDraft, SellerSettings, _text_list
+from listly.models import ListingDraft, SellerSettings, text_list
 from listly.platforms import PLATFORMS
-from listly.writer import LANGUAGES
 
 STEP = "buyer_reply"
 
@@ -131,7 +131,7 @@ def draft_reply(
             warning = data.get("scam_warning")
             result = Reply(
                 reply=reply,
-                needs_seller_input=_text_list(data.get("needs_seller_input")),
+                needs_seller_input=text_list(data.get("needs_seller_input")),
                 scam_warning=str(warning).strip() if warning else backup_warning,
             )
             cache.save(STEP, key, result.__dict__)

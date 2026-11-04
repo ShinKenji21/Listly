@@ -1,4 +1,4 @@
-<p align="center"><img src="listly-logo.svg" alt="Listly: One photo. Every marketplace." width="420"></p>
+<p align="center"><img src="assets/listly-logo.svg" alt="Listly: One photo. Every marketplace." width="420"></p>
 
 # Listly
 
@@ -83,25 +83,45 @@ Open the link Streamlit prints (usually http://localhost:8501). On a phone on th
 ## Project structure
 
 ```
-app.py               Streamlit UI: home, 3-step new listing, saved listing
-.streamlit/config.toml  light and dark theme colours, Inter font
+app.py                    entry point: page setup and which screen to show
 listly/
-  identify.py        Muse Spark: item, flaws, follow-up questions
-  cutout.py          SAM 3.1 cut-out + one_bit mask decoder
-  clean_photo.py     Muse Image clean product photo
-  pricing.py         Muse Spark + web search, verified comparables
-  writer.py          per-platform listings + checker
-  replies.py         buyer replies: seller questions, scam warnings, lowest-price guard
-  platforms.py       platform profiles (adding a site = adding a profile)
-  models.py          dataclasses and validation
-  storage.py         saved listings in data/ (JSON + photos)
-  ui/theme.py        all custom styling (light and dark)
-  ui/components.py   reusable pieces: listing card, badges, step bar, ...
-  api.py, cache.py, config.py, images.py, sample.py (3 sample listings)
-eval/
-  items.csv          test items with known answers (photos go in eval/photos/, not committed)
-  run_eval.py        scores identification, condition, flaws and price range
+  ai/                     everything that calls Meta's models
+    api.py                one shared API call: errors, timing, JSON parsing
+    identify.py           Muse Spark: item, flaws, highlights, follow-up questions
+    cutout.py             SAM 3.1 cut-out + one_bit mask decoder
+    clean_photo.py        Muse Image clean product photo
+    pricing.py            Muse Spark + web search: price range, listing and lowest price, checked sources
+    writer.py             per-platform listings + checker + rewrite on request
+    replies.py            buyer replies: seller questions, scam warnings, lowest-price guard
+  ui/                     the Streamlit interface
+    pages/                one module per screen: home, new_listing, listing, settings
+    sections.py           sections shared by screens (listing tabs, price, details form)
+    components.py         small reusable pieces: listing card, badges, step bar, copy buttons
+    theme.py              all custom styling (light and dark)
+    state.py              page navigation
+  models.py               dataclasses + validation of everything the model returns
+  platforms.py            platform profiles (adding a site = adding a profile)
+  storage.py              saved listings and settings in data/
+  cache.py, config.py, images.py, sample.py
+tests/                    57 automated tests, using a fake Meta API (no key, no credits)
+eval/                     scores Listly on real photos with known answers (uses real API calls)
+assets/                   logo and app icon
+.streamlit/config.toml    light and dark theme colours, Inter font
+.github/workflows/        runs the linter and tests on every push
 ```
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+pytest          # 57 tests, about 5 seconds; never calls the real API
+ruff check .    # lint: unused imports, likely bugs, import order
+```
+
+The tests swap in a fake Meta API (see `tests/conftest.py`) that returns queued replies and records every
+request, so they check the exact requests Listly sends and how it handles the replies, including bad JSON,
+broken listings, made-up links, scams and replies that try to go below the seller's lowest price. The app
+tests click through every screen with Streamlit's test runner in demo mode.
 
 ## Evaluation
 

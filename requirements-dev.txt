@@ -1,0 +1,3 @@
+# Only needed to work on Listly: tests and linting (see the README's "Development" section).
+pytest>=9.0
+ruff>=0.17

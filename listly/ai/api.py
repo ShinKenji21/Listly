@@ -20,13 +20,14 @@ def create_response(label: str, **kwargs):
         # Printed to the terminal only, so we can see which model makes the app feel slow.
         print(f"[listly] {kwargs.get('model')} answered in {time.perf_counter() - start:.1f}s", flush=True)
         return response
-    # Don't show the raw SDK error: auth errors can echo part of the API key.
+    # Don't pass on the raw SDK error: auth errors can echo part of the API key.
+    # "from None" also keeps it out of the traceback, so it can't leak into logs either.
     except openai.AuthenticationError:
-        raise StepError("The API key was rejected. Check META_API_KEY in your .env file.")
+        raise StepError("The API key was rejected. Check META_API_KEY in your .env file.") from None
     except openai.RateLimitError:
-        raise StepError("Too many requests or out of credits. Wait a moment and try again.")
+        raise StepError("Too many requests or out of credits. Wait a moment and try again.") from None
     except openai.APIError as e:
-        raise StepError(f"Couldn't reach {label} ({type(e).__name__}). Try again.")
+        raise StepError(f"Couldn't reach {label} ({type(e).__name__}). Try again.") from None
 
 
 def parse_json(text: str) -> dict:

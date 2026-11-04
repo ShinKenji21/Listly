@@ -21,7 +21,7 @@ def _text(value) -> str:
     return text
 
 
-def _text_list(value) -> list[str]:
+def text_list(value) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str):
@@ -71,10 +71,10 @@ class ItemInfo:
             category=_text(data.get("category")),
             color=_text(data.get("color")),
             condition=_choice(data.get("condition"), CONDITIONS),
-            flaws=_text_list(data.get("flaws")),
-            features=_text_list(data.get("features")),
+            flaws=text_list(data.get("flaws")),
+            features=text_list(data.get("features")),
             confidence=_choice(data.get("confidence"), CONFIDENCES),
-            questions_for_seller=_text_list(data.get("questions_for_seller")),
+            questions_for_seller=text_list(data.get("questions_for_seller")),
             prohibited=data.get("prohibited") is True,
             prohibited_reason=_text(data.get("prohibited_reason")) if data.get("prohibited") is True else "",
         )
@@ -189,8 +189,8 @@ class PlatformListing:
         title, description = _text(data.get("title")), str(data.get("description") or "").strip()
         if title == UNKNOWN or not description:
             raise ValueError("reply is missing the title or description")
-        tags = [t.lstrip("#") for t in _text_list(data.get("tags"))]  # we add "#" ourselves where needed
-        return cls(title=title, description=description, tags=tags, warnings=_text_list(data.get("warnings")))
+        tags = [t.lstrip("#") for t in text_list(data.get("tags"))]  # we add "#" ourselves where needed
+        return cls(title=title, description=description, tags=tags, warnings=text_list(data.get("warnings")))
 
 
 @dataclass
@@ -221,7 +221,8 @@ class ListingDraft:
         for label, value in [("Brand", info.brand), ("Model", info.model), ("Color", info.color)]:
             if value != UNKNOWN:  # leave out unknowns so the model doesn't write or search "unknown"
                 lines.append(f"{label}: {value}")
-        lines.append(f"Condition: {info.condition}")
+        if info.condition != UNKNOWN:
+            lines.append(f"Condition: {info.condition}")
         if info.features:
             lines.append("Highlights: " + "; ".join(info.features))
         lines.append("Flaws: " + ("; ".join(info.flaws) if info.flaws else "none known"))

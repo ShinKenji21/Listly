@@ -17,7 +17,7 @@ from listly.models import ListingDraft
 from listly.platforms import PLATFORMS
 
 SHORT_NAMES = {"facebook": "FB", "shopee": "Shopee", "carousell": "Carousell"}
-ICON_PATH = Path(__file__).resolve().parents[2] / "listly-icon.svg"  # the app icon in the repo root
+ICON_PATH = Path(__file__).resolve().parents[2] / "assets" / "listly-icon.svg"
 
 
 @lru_cache(maxsize=1)
