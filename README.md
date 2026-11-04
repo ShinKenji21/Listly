@@ -1,4 +1,6 @@
-# 🏷️ Listly
+<p align="center"><img src="listly-logo.svg" alt="Listly: One photo. Every marketplace." width="420"></p>
+
+# Listly
 
 **One photo in, a ready-to-post listing out.** Listly helps second-hand sellers in the Philippines turn a single
 photo of an item into honest, ready-to-copy listings for **Facebook Marketplace, Shopee and Carousell**, with a

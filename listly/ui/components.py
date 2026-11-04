@@ -3,8 +3,11 @@
 Everything that comes from the model or the seller goes through escape(), so it can't inject HTML.
 """
 
+import base64
 from datetime import datetime
+from functools import lru_cache
 from html import escape
+from pathlib import Path
 
 import streamlit as st
 
@@ -13,6 +16,13 @@ from listly.models import ListingDraft
 from listly.platforms import PLATFORMS
 
 SHORT_NAMES = {"facebook": "FB", "shopee": "Shopee", "carousell": "Carousell"}
+ICON_PATH = Path(__file__).resolve().parents[2] / "listly-icon.svg"  # the app icon in the repo root
+
+
+@lru_cache(maxsize=1)
+def icon_src() -> str:
+    """The Listly icon as a data URL, so it can be shown inside our own HTML."""
+    return "data:image/svg+xml;base64," + base64.b64encode(ICON_PATH.read_bytes()).decode()
 
 
 def html(markup: str) -> None:
@@ -60,9 +70,10 @@ def price_tag(amount: int | None) -> str:
 
 def top_bar(demo: bool) -> None:
     demo_badge = '<span class="demo" title="Sample answers, no API calls, no credits used">Demo mode</span>' if demo else ""
+    # The wordmark is text (not the logo image) so it stays readable in dark mode.
     html(
-        f"""<div class="topbar"><div class="mark">L</div>
-        <div><div class="name">Listly</div><div class="tagline">One photo. Every marketplace.</div></div>
+        f"""<div class="topbar"><img class="mark" src="{icon_src()}" alt="Listly logo">
+        <div><div class="name">listly</div><div class="tagline">One photo. Every marketplace.</div></div>
         {demo_badge}</div>"""
     )
 
@@ -73,7 +84,10 @@ def section_header(title: str, count: int | None = None) -> None:
 
 
 def empty_state(title: str, message: str) -> None:
-    html(f'<div class="empty"><b>{escape(title)}</b><br>{escape(message)}</div>')
+    html(
+        f'<div class="empty"><img src="{icon_src()}" alt="">'
+        f"<b>{escape(title)}</b><br>{escape(message)}</div>"
+    )
 
 
 def step_bar(steps: list[str], current: int) -> None:

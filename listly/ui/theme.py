@@ -57,11 +57,8 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none !important; }
 
 /* --- Top bar ------------------------------------------------------------------------------ */
 .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 0 16px; }
-.topbar .mark {
-  width: 36px; height: 36px; border-radius: 10px; background: var(--brand); color: var(--brand-ink);
-  display: grid; place-items: center; font-weight: 800; font-size: 1.1rem;
-}
-.topbar .name { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1.1; }
+.topbar .mark { width: 40px; height: 40px; display: block; border-radius: 10px; }
+.topbar .name { font-size: 1.5rem; font-weight: 800; letter-spacing: -.03em; color: var(--ink); line-height: 1.05; }
 .topbar .tagline { font-size: .85rem; color: var(--muted); }
 .topbar .demo {
   margin-left: auto; font-size: .75rem; font-weight: 600; color: var(--warn); white-space: nowrap;
@@ -137,6 +134,7 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none !important; }
   border: 1.5px dashed var(--line); border-radius: var(--radius); background: var(--surface);
 }
 .empty b { color: var(--ink); font-size: 1.05rem; }
+.empty img { width: 56px; height: 56px; display: block; margin: 0 auto 12px; border-radius: 14px; }
 
 /* --- New-listing flow ------------------------------------------------------------------------ */
 .stepper { display: flex; align-items: center; gap: 6px; margin: 4px 0 16px; }
@@ -165,8 +163,18 @@ header[data-testid="stHeader"], #MainMenu, footer { display: none !important; }
 .price-card .range { font-size: 1.9rem; font-weight: 800; letter-spacing: -.02em; color: var(--ink); margin: 2px 0 8px; }
 .price-card .summary { font-size: .9rem; color: var(--muted); margin: 8px 0 0; line-height: 1.45; }
 
-.page-head { margin-bottom: 12px; }
-.page-head h2 { font-size: 1.3rem; font-weight: 800; margin: 4px 0 6px; color: var(--ink); line-height: 1.3; }
+.page-head { margin: 8px 0 12px; }
+.page-head h2 { font-size: 1.3rem; font-weight: 800; margin: 4px 0 4px; color: var(--ink); line-height: 1.3; }
+.page-head .big-price { font-size: 1.6rem; font-weight: 800; color: var(--brand); margin-bottom: 8px; letter-spacing: -.02em; }
+
+/* Destructive button in the delete dialog is red, not the brand colour. */
+.st-key-pair_delete [data-testid="stColumn"]:last-child button { background: #B42318; border-color: #B42318; color: #fff; }
+
+/* Saved listing: one big photo, the whole image visible */
+.st-key-hero_photo img {
+  width: 100%; max-height: 420px; aspect-ratio: 4 / 3; object-fit: contain;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+}
 
 .footer { text-align: center; color: var(--muted); font-size: .78rem; margin-top: 40px; }
 """

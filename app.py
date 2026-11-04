@@ -9,6 +9,7 @@ import copy
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from html import escape
+from pathlib import Path
 
 import streamlit as st
 from PIL import UnidentifiedImageError
@@ -33,7 +34,6 @@ from listly.ui.components import (
     peso,
     platform_chips,
     section_header,
-    status_badge,
     step_bar,
     title_of,
     top_bar,
@@ -41,7 +41,7 @@ from listly.ui.components import (
 from listly.ui.theme import apply_theme
 from listly.writer import LANGUAGES, check, revise_listing, write_listing
 
-st.set_page_config(page_title="Listly", page_icon="🏷️")
+st.set_page_config(page_title="Listly", page_icon=str(Path(__file__).parent / "listly-icon.svg"))
 apply_theme()
 state = st.session_state
 state.setdefault("page", "home")
@@ -354,8 +354,21 @@ def details_step(draft: ListingDraft) -> None:
     if draft.info.flaws:
         st.warning("**Flaws to mention in the listing:**\n- " + "\n- ".join(draft.info.flaws))
 
+    if details_form(draft, "Save and continue  →"):
+        # New details can change the price and the texts; unchanged details come from the cache for free.
+        draft.price, draft.listings = None, {}
+        go("new", step=3, price_tried=False, price_error=None, writer_tried=False)
+    if st.button("← Back to photo", type="tertiary"):
+        go("new", step=1)
+
+
+def details_form(draft: ListingDraft, submit_label: str) -> bool:
+    """The editable item details. Updates draft and returns True when the seller saves valid details.
+
+    Used in the new-listing flow and on a saved listing's Details tab.
+    """
     # A form only reruns the app when the button is pressed, not on every keystroke.
-    with st.container(key="card-details"), st.form("details", border=False):
+    with st.container(key="card-details"), st.form(f"details-{draft.photo_id}", border=False):
         item = st.text_input("Item", draft.info.item)
         col1, col2 = st.columns(2)
         brand = col1.text_input("Brand", as_input(draft.info.brand), placeholder="Unknown")
@@ -383,30 +396,27 @@ def details_step(draft: ListingDraft) -> None:
             for question in draft.info.questions_for_seller:
                 answers[question] = st.text_input(question, draft.answers.get(question, ""))
 
-        saved = st.form_submit_button("Save and continue  →", type="primary", width="stretch")
+        saved = st.form_submit_button(submit_label, type="primary", width="stretch")
 
-    if saved:
-        if not item.strip():
-            st.error("Please say what the item is.")
-            return
-        draft.info = replace(
-            draft.info,
-            item=item.strip(),
-            brand=from_input(brand),
-            model=from_input(model),
-            category=from_input(category),
-            color=from_input(color),
-            condition=condition,
-            flaws=[line.strip() for line in flaws_text.splitlines() if line.strip()],
-            features=[line.strip() for line in features_text.splitlines() if line.strip()],
-        )
-        # Skip blank answers so later steps don't treat "" as something the seller said.
-        draft.answers = {q: a.strip() for q, a in answers.items() if a.strip()}
-        # New details can change the price and the texts; unchanged details come from the cache for free.
-        draft.price, draft.listings = None, {}
-        go("new", step=3, price_tried=False, price_error=None, writer_tried=False)
-    if st.button("← Back to photo", type="tertiary"):
-        go("new", step=1)
+    if not saved:
+        return False
+    if not item.strip():
+        st.error("Please say what the item is.")
+        return False
+    draft.info = replace(
+        draft.info,
+        item=item.strip(),
+        brand=from_input(brand),
+        model=from_input(model),
+        category=from_input(category),
+        color=from_input(color),
+        condition=condition,
+        flaws=[line.strip() for line in flaws_text.splitlines() if line.strip()],
+        features=[line.strip() for line in features_text.splitlines() if line.strip()],
+    )
+    # Skip blank answers so later steps don't treat "" as something the seller said.
+    draft.answers = {q: a.strip() for q, a in answers.items() if a.strip()}
+    return True
 
 
 def make_photos(image: bytes, info) -> tuple[bytes | None, list[str]]:
@@ -537,7 +547,6 @@ def new_page() -> None:
 
 def buyer_helper(draft: ListingDraft) -> None:
     with st.container(key="card-buyer"):
-        st.subheader("Reply to a buyer")
         st.caption("Paste what the buyer wrote. Listly drafts a polite reply and never goes below your lowest price.")
         with st.form("buyer", border=False):
             message = st.text_area("Buyer's message", placeholder="Hi! Last price? Can you do ₱1,200?")
@@ -560,6 +569,36 @@ def buyer_helper(draft: ListingDraft) -> None:
             copy_box("Suggested reply (check it before sending)", replies[draft.photo_id])
 
 
+@st.dialog("Delete this listing?")
+def confirm_delete(draft: ListingDraft) -> None:
+    st.write(f"**{title_of(draft)}** and its photos will be removed from this computer. This can't be undone.")
+    with st.container(key="pair_delete"):
+        cancel, delete = st.columns(2)
+        if cancel.button("Cancel", width="stretch"):
+            st.rerun()
+        if delete.button("Delete", type="primary", width="stretch"):
+            storage.delete_listing(draft.photo_id)
+            go("home", toast="Listing deleted")
+
+
+def hero_photo(draft: ListingDraft) -> None:
+    """One big photo (clean if there is one) with a switch to the original, plus a Download button."""
+    original = storage.load_photo(draft.photo_id, "photo")
+    clean = storage.load_photo(draft.photo_id, "clean")
+    choice = "Clean photo" if clean else "Original"
+    if clean and original:
+        choice = st.segmented_control(
+            "Photo", ["Clean photo", "Original"], default="Clean photo",
+            key=f"photo-{draft.photo_id}", label_visibility="collapsed",
+        ) or "Clean photo"
+    shown = clean if (choice == "Clean photo" and clean) else original
+    if shown:
+        with st.container(key="hero_photo"):
+            st.image(shown)
+        name = "listly-clean.jpg" if shown is clean else "listly-original.jpg"
+        st.download_button(f"Download {choice.lower()}", shown, name, "image/jpeg", icon=":material/download:")
+
+
 def view_page() -> None:
     draft = storage.load_listing(state.get("view_id", ""))
     if st.button("← My listings", type="tertiary"):
@@ -568,10 +607,12 @@ def view_page() -> None:
         st.error("This listing couldn't be opened.")
         return
 
+    hero_photo(draft)
     html(
         f'<div class="page-head"><h2>{escape(title_of(draft))}</h2>'
-        f'<div class="chips">{status_badge(draft.status)}<span class="chip good">{escape(peso(draft.asking_price))}</span>'
-        f"{platform_chips(draft.platforms)}</div></div>"
+        f'<div class="big-price">{escape(peso(draft.asking_price))}</div>'
+        f'<div class="chips">{platform_chips(draft.platforms)}'
+        f'<span class="chip">Saved {escape(draft.created[:10])}</span></div></div>'
     )
 
     # Listly never posts and can't see the seller's accounts, so the seller sets the status themselves.
@@ -587,19 +628,34 @@ def view_page() -> None:
         storage.update_status(draft.photo_id, status)
         go("view", toast=f"Marked as {status.capitalize()}")
 
-    photo_pair(storage.load_photo(draft.photo_id, "photo"), storage.load_photo(draft.photo_id, "clean"))
-    if draft.price:
-        with st.expander("Price research"):
+    details, listings, price, replies = st.tabs(["Details", "Listings", "Price", "Buyer replies"])
+    with details:
+        if details_form(draft, "Save details"):
+            storage.save_listing(draft)
+            go("view", toast="Details saved")
+        st.caption(
+            "Saving details doesn't change your listing texts. To update them, "
+            'use "Ask Listly to change it" in the Listings tab.'
+        )
+    with listings:
+        listing_tabs(draft, on_save=storage.save_listing)
+    with price:
+        with st.form(f"price-{draft.photo_id}", border=False):
+            asking = st.number_input("Your listing price (₱)", min_value=0, value=int(draft.asking_price or 0), step=100)
+            if st.form_submit_button("Save price", width="stretch"):
+                draft.asking_price = int(asking) or None
+                storage.save_listing(draft)
+                go("view", toast="Price saved")
+        if draft.price:
             show_price(draft.price)
+        else:
+            st.caption("No price research for this listing.")
+    with replies:
+        buyer_helper(draft)
 
-    section_header("Your listings")
-    listing_tabs(draft, on_save=storage.save_listing)
-    buyer_helper(draft)
-
-    with st.expander("Delete this listing"):
-        if st.button("Delete for good", type="primary"):
-            storage.delete_listing(draft.photo_id)
-            go("home", toast="Listing deleted")
+    st.divider()
+    if st.button("Delete listing", icon=":material/delete:", type="tertiary"):
+        confirm_delete(draft)
 
 
 # --- which page to show --------------------------------------------------------------------------
