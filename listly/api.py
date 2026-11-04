@@ -1,6 +1,7 @@
 """One place to call the Meta Model API, so every step handles errors the same way."""
 
 import json
+import time
 
 import openai
 
@@ -13,8 +14,12 @@ class StepError(Exception):
 
 def create_response(label: str, **kwargs):
     """Call the Responses API (/v1/responses). `label` names the model in error messages."""
+    start = time.perf_counter()
     try:
-        return get_client().responses.create(**kwargs)
+        response = get_client().responses.create(**kwargs)
+        # Printed to the terminal only, so we can see which model makes the app feel slow.
+        print(f"[listly] {kwargs.get('model')} answered in {time.perf_counter() - start:.1f}s", flush=True)
+        return response
     # Don't show the raw SDK error: auth errors can echo part of the API key.
     except openai.AuthenticationError:
         raise StepError("The API key was rejected. Check META_API_KEY in your .env file.")

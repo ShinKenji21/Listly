@@ -6,6 +6,7 @@ The look lives in listly/ui (theme.py for styling, components.py for reusable pi
 """
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from html import escape
 
@@ -408,23 +409,51 @@ def details_step(draft: ListingDraft) -> None:
         go("new", step=1)
 
 
-def run_photo_steps(draft: ListingDraft) -> None:
-    """Cut-out then clean photo. Each step can fail on its own and falls back instead of stopping."""
-    state.photo_tried = True
-    notes, source = [], state.image
-    with st.spinner("Cleaning up your photo…"):
-        try:
-            cut = cut_out(state.image, draft.info)
-            source = cut.png
-            if not cut.exact:
-                notes.append("Couldn't trace the item's exact outline, so it was cropped instead.")
-        except StepError as e:
-            notes.append(f"Cut-out skipped: {e} Using the full photo instead.")
-        try:
-            state.clean = make_clean_photo(source)
-        except StepError as e:
-            notes.append(f"Couldn't make a clean photo: {e} Your original photo is still fine to use.")
-    state.photo_notes = notes
+def make_photos(image: bytes, info) -> tuple[bytes | None, list[str]]:
+    """Cut-out then clean photo. Each step can fail on its own and falls back instead of stopping.
+
+    No st.* calls in here, because it runs in a background thread next to the price search.
+    """
+    notes, source, clean = [], image, None
+    try:
+        cut = cut_out(image, info)
+        source = cut.png
+        if not cut.exact:
+            notes.append("Couldn't trace the item's exact outline, so it was cropped instead.")
+    except StepError as e:
+        notes.append(f"Cut-out skipped: {e} Using the full photo instead.")
+    try:
+        clean = make_clean_photo(source)
+    except StepError as e:
+        notes.append(f"Couldn't make a clean photo: {e} Your original photo is still fine to use.")
+    return clean, notes
+
+
+def run_photo_and_price(draft: ListingDraft) -> None:
+    """The photo cleanup and the price search don't depend on each other, so run them at the same time.
+
+    Each is several seconds of waiting for Meta's servers; side by side, the seller waits for the
+    slower one instead of both added together.
+    """
+    need_photo = state.clean is None and not state.photo_tried
+    need_price = draft.price is None and not state.price_tried
+    if not (need_photo or need_price):
+        return
+    state.photo_tried = state.photo_tried or need_photo
+    state.price_tried = state.price_tried or need_price
+    message = "Cleaning up your photo and checking prices…" if need_photo and need_price else (
+        "Cleaning up your photo…" if need_photo else "Checking prices of similar items…"
+    )
+    with st.spinner(message), ThreadPoolExecutor(max_workers=2) as pool:
+        photo_job = pool.submit(make_photos, state.image, draft.info) if need_photo else None
+        price_job = pool.submit(suggest_price, draft) if need_price else None
+        if photo_job:
+            state.clean, state.photo_notes = photo_job.result()
+        if price_job:
+            try:
+                draft.price, state.price_error = price_job.result(), None
+            except StepError as e:
+                state.price_error = str(e)
 
 
 def photo_pair(original: bytes | None, clean: bytes | None, retry: bool = False) -> None:
@@ -442,22 +471,14 @@ def photo_pair(original: bytes | None, clean: bytes | None, retry: bool = False)
 
 
 def photo_price_step(draft: ListingDraft) -> None:
+    run_photo_and_price(draft)
+
     st.subheader("Photo")
-    if state.clean is None and not state.photo_tried:
-        run_photo_steps(draft)
     for note in state.photo_notes:
         st.info(note)
     photo_pair(state.image, state.clean, retry=True)
 
     st.subheader("Price")
-    if draft.price is None and not state.price_tried:
-        state.price_tried = True
-        with st.spinner("Checking prices of similar items…"):
-            try:
-                draft.price = suggest_price(draft)
-                state.price_error = None
-            except StepError as e:
-                state.price_error = str(e)
     if state.price_error:
         st.error(state.price_error)
         if st.button("Search again"):
@@ -485,10 +506,12 @@ def listings_step(draft: ListingDraft) -> None:
     missing = [k for k in draft.platforms if k not in draft.listings]
     if missing and not state.writer_tried:
         state.writer_tried, state.writer_errors = True, {}
-        with st.spinner("Writing your listings…"):
-            for key in missing:
+        # One call per platform, all at the same time: the seller waits for the slowest, not all three in a row.
+        with st.spinner("Writing your listings…"), ThreadPoolExecutor(max_workers=len(missing)) as pool:
+            jobs = {key: pool.submit(write_listing, draft, PLATFORMS[key]) for key in missing}
+            for key, job in jobs.items():
                 try:
-                    draft.listings[key] = write_listing(draft, PLATFORMS[key])
+                    draft.listings[key] = job.result()
                 except StepError as e:
                     state.writer_errors[key] = str(e)
 

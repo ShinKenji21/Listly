@@ -188,6 +188,12 @@ def cut_out(image_bytes: bytes, info: ItemInfo) -> Cutout:
     else:
         raise StepError(f"SAM 3.1 couldn't find the {names[0]} in the photo.")
 
+    # Decoding the mask takes about a second in Python, so keep the finished cut-out too.
+    png_key = image_hash(image_bytes + reply.encode())
+    cached_png = cache.load_bytes(STEP, png_key, "png")
+    if cached_png is not None:
+        return Cutout(png=cached_png, exact=True)  # only exact cut-outs are saved below
+
     records = RECORD.findall(reply)
     # SAM can return several matches; the item being sold is usually the biggest one in the photo.
     best = max(records, key=lambda r: (int(r[3]) - int(r[1])) * (int(r[4]) - int(r[2])))
@@ -209,4 +215,6 @@ def cut_out(image_bytes: bytes, info: ItemInfo) -> Cutout:
 
     alpha = Image.fromarray(mask.astype(np.uint8) * 255).resize(crop.size)
     crop.putalpha(alpha)  # background pixels become transparent
-    return Cutout(png=_to_png(crop), exact=True)
+    png = _to_png(crop)
+    cache.save_bytes(STEP, png_key, "png", png)
+    return Cutout(png=png, exact=True)
