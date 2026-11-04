@@ -25,7 +25,7 @@ PLATFORMS = {
         Platform(
             key="facebook",
             name="Facebook Marketplace",
-            tone="friendly and casual, like a neighbour selling to a neighbour",
+            tone="friendly but straightforward, like a normal seller on Facebook Marketplace",
             max_title=100,
             hashtags=False,
             description_tips="Short paragraphs. Start with the key facts (condition, size/specs), then flaws, "

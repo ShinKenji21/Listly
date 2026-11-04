@@ -15,10 +15,18 @@ STEP = "writer"
 
 LANGUAGES = {
     "English": "Write in clear, natural English.",
-    "Filipino": "Write in natural Filipino (Tagalog), the way Filipino sellers write online. "
-    "Keep brand names, model names and technical terms in English.",
-    "Taglish": "Write in Taglish (a natural mix of Tagalog and English), the way Filipino sellers casually post online.",
+    "Filipino": "Write in clear, natural Filipino (Tagalog), like a normal online listing. "
+    "Keep brand names, model names, specs and technical terms in English. Avoid slang and deep or formal Tagalog.",
+    "Taglish": "Write in natural Taglish: mostly simple Tagalog sentences with English for specs, features and "
+    "technical terms, the way a normal seller writes a listing. Avoid slang and forced or overly casual phrases.",
 }
+
+# Openers that make a listing read like a social media post instead of a listing.
+GREETING = re.compile(
+    r"^\W*(hi|hello|hey|good (morning|afternoon|evening|day)|kumusta|musta|mga (kapitbahay|pare|bes|ka)|"
+    r"hello po|hi po|pare|bes)\b",
+    re.IGNORECASE,
+)
 
 PROMPT = """You are writing a {platform} listing for a seller in the Philippines.
 
@@ -33,6 +41,11 @@ Platform rules:
 - {hashtag_rule}
 - Tags: {min_tags} to {max_tags} short search keywords, without "#".
 - Language: {language}
+
+Style rules:
+- Start the description directly with the item and its key facts.
+- No greetings or openers (like "Hi", "Hello", "Hi mga kapitbahay", "Hello mga pare"), no slang, no hype.
+- Sound like a real, trustworthy seller: short, clear sentences.
 
 Honesty rules (most important):
 - Mention every flaw listed in the item details clearly in the description. Never hide or soften a flaw.
@@ -95,6 +108,8 @@ def check(listing: PlatformListing, platform: Platform, draft: ListingDraft) -> 
         problems.append(f"The title is {len(listing.title)} characters; the limit is {platform.max_title}.")
     if len(listing.description) < 80:
         problems.append("The description is too short; add the key details.")
+    if GREETING.match(listing.description) or GREETING.match(listing.title):
+        problems.append("Remove the greeting at the start; begin directly with the item.")
     if not platform.hashtags and "#" in listing.description:
         problems.append("Remove the hashtags; this platform doesn't use them.")
     if not platform.min_tags <= len(listing.tags) <= platform.max_tags:
